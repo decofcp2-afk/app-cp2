@@ -1,43 +1,71 @@
-# AppSEL da Reitoria
+# App Gestao da Reitoria
 
 Aplicacao interna da equipe SEL/SEPMA para gestao das etapas dos processos, fila, capacidade, historico, configuracoes, e-mails e avisos de prazo.
 
-Este projeto foi separado do Painel de Contratacoes. O AppSEL deve ficar em repositorio proprio e em GitHub Pages proprio, porque possui login, escrita na planilha, envio de e-mails e trigger diario.
+Este projeto foi separado do Painel de Contratacoes. O App Gestao deve ficar em repositorio proprio e em GitHub Pages proprio, porque possui login, escrita na planilha, envio de e-mails e trigger diario.
 
 ## Estrutura
 
 ```text
-appsel-reitoria/
-├── index.html              pagina estatica publicada no GitHub Pages
-├── config.js               URL publica do Apps Script da DECOF
-├── CHECKLIST_PUBLICACAO.md roteiro de publicacao e testes
-├── apps-script/
-│   └── Code.gs             back-end do AppSEL para copiar no Apps Script
-├── README.md
-└── .gitignore
+app_gestao-reitoria/
+|-- index.html              pagina estatica publicada no GitHub Pages
+|-- config.js               URL publica do Apps Script da DECOF
+|-- CHECKLIST_PUBLICACAO.md roteiro de publicacao e testes
+|-- apps-script/
+|   `-- Code.gs             backend do App Gestao para copiar no Apps Script
+|-- README.md
+`-- .gitignore
 ```
 
-## Fluxo
+## Fluxo geral
 
 ```text
-┌─────────────────────────────────────────────────────┐
-│            GOOGLE SHEETS (banco de dados)            │
-│  usuarios/config, processos, etapas, capacidade      │
-└──────────────────────┬──────────────────────────────┘
-                       │ le e escreve com conta DECOF
-┌──────────────────────▼──────────────────────────────┐
-│            APPS SCRIPT DO APPSEL                     │
-│  login, sessoes, etapas, fila, capacidade, e-mails   │
-│  rotas JSON/JSONP para o GitHub Pages                │
-└──────────────────────┬──────────────────────────────┘
-                       │ respostas JSONP
-┌──────────────────────▼──────────────────────────────┐
-│              APPSEL - GITHUB PAGES                   │
-│  login por matricula + senha                         │
-│  chefia gerencia equipe, processos e configuracoes   │
-│  equipe registra andamento e consulta sua carga      │
-└─────────────────────────────────────────────────────┘
+Google Sheets da unidade
+  |
+  | le e escreve com a conta institucional
+  v
+Apps Script do App Gestao
+  |
+  | login, tokens, fila, etapas, capacidade, e-mails e avisos
+  v
+App Gestao no GitHub Pages
+  |
+  | equipe usa pelo navegador
+  v
+Atualizacoes voltam para a mesma planilha
 ```
+
+O Painel de Contratacoes le a mesma planilha por outro Apps Script, separado e somente leitura. Assim o painel pode ficar publico, enquanto o App Gestao continua protegido por login.
+
+## Principais funcoes
+
+- Login por matricula e senha.
+- Recuperacao de senha por e-mail.
+- Registro e conclusao de etapas.
+- Regressao de etapa quando uma etapa precisa ser reaberta.
+- Retorno de processo para a fila preservando o status real do processo.
+- Reativacao de processos retornados pela aba Fila.
+- Controle de capacidade por servidor e fase.
+- Cadastro e manutencao da equipe.
+- Envio de avisos e trigger diario.
+
+## Retorno para fila
+
+Processos em andamento podem voltar para a fila em casos reais como suspensao, paralisacao, devolucao pelo setor ou desistencia.
+
+Esse fluxo preserva o historico do processo:
+
+- O status atual do processo e da etapa fica preservado.
+- A etapa atual recebe uma marca operacional `RETORNO PARA FILA` no campo de motivo.
+- O D0 existente continua registrado.
+- Etapas ja concluidas continuam concluidas.
+- A justificativa fica registrada no historico.
+- A capacidade do processo deixa de contar como ativa.
+- Os avisos automaticos de atraso deixam de ser enviados enquanto o processo estiver na fila.
+- O processo aparece novamente na aba Fila.
+- Ao iniciar/reativar pela Fila, o status volta para `Em andamento`.
+
+Esse comportamento tambem ajuda nos testes, porque permite simular a volta para fila sem apagar a realidade atual dos dados.
 
 ## Configuracao
 
@@ -63,12 +91,12 @@ Use `CHECKLIST_PUBLICACAO.md` como roteiro curto. O resumo e:
 - `?route=appsel.changePasswordHash`
 - `?route=appsel.call&method=...`
 
-O login no GitHub Pages usa desafio criptografico: a senha digitada nao e enviada aberta na URL. As demais chamadas preservam a compatibilidade com as funcoes atuais do AppSEL e exigem token quando a funcao original ja exigia token.
+O login no GitHub Pages usa desafio criptografico: a senha digitada nao e enviada aberta na URL. As demais chamadas preservam a compatibilidade com as funcoes atuais do App Gestao e exigem token quando a funcao original ja exigia token.
 
 ## Cuidados
 
 - Nao publicar ID real de planilha no GitHub.
 - Nao publicar e-mails pessoais ou PDFs/planilhas reais neste repositorio.
-- Manter o Painel e o AppSEL em repositorios separados.
+- Manter o Painel e o App Gestao em repositorios separados.
 - Testar em Chrome, Edge e aba anonima depois de publicar.
 - Testar login preferencialmente no GitHub Pages, com HTTPS. Abrir o `index.html` localmente pode bloquear a validacao criptografica da senha em alguns navegadores.

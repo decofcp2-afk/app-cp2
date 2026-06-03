@@ -114,6 +114,7 @@
     .b-aguardando { background:#fff7ed; color:var(--amber); }
     .b-paralisado { background:#f5f3ff; color:var(--purple); }
     .b-andamento  { background:#eff6ff; color:var(--blue); }
+    .b-retornado  { background:#fef3c7; color:#92400e; }
     .b-planejamento { background:#f1f5f9; color:var(--muted); }
     .b-ok         { background:#f0fdf4; color:var(--green); }
     .proc-info { flex:1; min-width:0; }
@@ -777,6 +778,7 @@ var HIST_CARREGADO = false;
 var SL = {
   ok:'Concluída', andamento:'Em andamento', atrasado:'Atrasado',
   aguardando:'Aguardando requisitante', paralisado:'Paralisado',
+  retornado:'Retornado para fila',
   pendente:'Não iniciada', na:'Não se aplica', planejamento:'A iniciar'
 };
 
@@ -828,6 +830,17 @@ function dialogoCampo_(opts, cb) {
 
 function isChefeAtual_() {
   return CHEFES.indexOf(SERVIDOR) >= 0;
+}
+
+function isRetornoFila_(p) {
+  return !!(p && (p.retornoFila || p.status === 'retornado'));
+}
+
+function motivoRetornoFila_(p) {
+  return String((p && p.motivoFila) || '')
+    .replace(/^RETORNO PARA FILA:\s*/i, '')
+    .split(/\nMOTIVO ANTERIOR:/i)[0]
+    .trim();
 }
 
 function aplicarPerfilUI_() {
@@ -1356,9 +1369,9 @@ function renderEtapas(filtrado) {
 
   // Detecta processos com etapas atrasadas/paralisadas/aguardando OU com prazos vencidos na data
   function temPrazoVencido(p) {
-    if (p.status === 'ok') return false;
+    if (p.status === 'ok' || isRetornoFila_(p)) return false;
     return p.etapas.some(function(et) {
-      if (et.status === 'na' || et.status === 'ok') return false;
+      if (et.status === 'na' || et.status === 'ok' || et.retornoFila) return false;
       // Mesma regra do envio automático: prazo final da etapa já passou.
       if (et.fim_iso && (et.status === 'andamento' || et.status === 'atrasado' || et.status === 'pendente')) {
         if (new Date(et.fim_iso + 'T00:00:00') < hoje0) return true;
@@ -1368,7 +1381,7 @@ function renderEtapas(filtrado) {
   }
 
   var urgentes = lista.filter(function(p) {
-    return p.status === 'atrasado' || p.status === 'aguardando' || p.status === 'paralisado' || temPrazoVencido(p);
+    return !isRetornoFila_(p) && (p.status === 'atrasado' || p.status === 'aguardando' || p.status === 'paralisado' || temPrazoVencido(p));
   }).length;
 
   var badge = document.getElementById('badge-urg');
@@ -1376,7 +1389,7 @@ function renderEtapas(filtrado) {
   else              { badge.hidden = true; }
 
   // Processos "A iniciar" (planejamento) ficam apenas na aba Fila
-  var ativos = lista.filter(function(p) { return p.status !== 'ok' && p.status !== 'planejamento'; });
+  var ativos = lista.filter(function(p) { return p.status !== 'ok' && p.status !== 'planejamento' && !isRetornoFila_(p); });
   var conc   = lista.filter(function(p) { return p.status === 'ok'; });
 
   var html = '';
@@ -1408,7 +1421,7 @@ function renderEtapas(filtrado) {
     var meusProcVenc = lista.filter(function(p) {
       return p.status !== 'aguardando' && p.status !== 'paralisado' && temPrazoVencido(p);
     }).length;
-    var meusProc = lista.filter(function(p){ return p.status !== 'ok'; }).length;
+    var meusProc = lista.filter(function(p){ return p.status !== 'ok' && !isRetornoFila_(p); }).length;
     if (meusProcVenc > 0) {
       var filtroEhChefia = CHEFES.indexOf(F_SERV) >= 0;
       var destinoAviso = filtroEhChefia
@@ -1466,7 +1479,7 @@ function renderEtapas(filtrado) {
   // Badge da aba Fila (planejamento + sem D0)
   var badgeFila = document.getElementById('badge-fila');
   if (badgeFila) {
-    var nFila = FILA.length + DATA.filter(function(p){ return p.status==='planejamento'; }).length;
+    var nFila = FILA.length + DATA.filter(function(p){ return p.status==='planejamento' || isRetornoFila_(p); }).length;
     if (nFila) { badgeFila.textContent = nFila; badgeFila.hidden = false; } else { badgeFila.hidden = true; }
   }
 
@@ -1503,8 +1516,8 @@ function abrirProcesso(idx) {
     // Etapas N/A ficam ocultas no modal (ex: IRP sem IRP, Assinatura → responsabilidade de Contratos)
     if (_isEtapaContratualFront_(et)) return;
     if (et.status === 'na') return;
-    var dotMap  = {ok:'d-ok',andamento:'d-and',atrasado:'d-atr',aguardando:'d-agu',paralisado:'d-par',na:'d-na',pendente:'d-pend'};
-    var iconMap = {ok:'✓',andamento:'●',atrasado:'!',aguardando:'⏳',paralisado:'⛔',na:'—',pendente:'○'};
+    var dotMap  = {ok:'d-ok',andamento:'d-and',atrasado:'d-atr',aguardando:'d-agu',paralisado:'d-par',retornado:'d-par',na:'d-na',pendente:'d-pend'};
+    var iconMap = {ok:'✓',andamento:'●',atrasado:'!',aguardando:'⏳',paralisado:'⛔',retornado:'↩',na:'—',pendente:'○'};
     var dotCls  = dotMap[et.status] || 'd-pend';
     var icon    = iconMap[et.status] || '○';
 
@@ -1567,7 +1580,7 @@ function abrirProcesso(idx) {
   document.getElementById('btn-email-proc').style.color = temEmail ? 'var(--green)' : 'var(--amber)';
   var btnVoltarFila = document.getElementById('btn-voltar-fila');
   if (btnVoltarFila) {
-    btnVoltarFila.hidden = !(isChefeAtual_() && p.d0_iso && p.status !== 'ok' && p.status !== 'planejamento');
+    btnVoltarFila.hidden = !(isChefeAtual_() && p.status !== 'ok' && p.status !== 'planejamento' && !isRetornoFila_(p));
   }
   footer.hidden = false;
 
@@ -1814,6 +1827,45 @@ function editarEmailProcAtivo_() {
       })
       .withFailureHandler(function(e) { toast('Erro: ' + (e.message || e), 'err'); })
       .salvarEmailProcesso(p.id, novo, AUTH_TOKEN);
+  });
+}
+
+function devolverProcFilaAtual_() {
+  var p = PROC_ATI;
+  if (!p || !isChefeAtual_()) return;
+  dialogoCampo_({
+    titulo: 'Voltar processo para a fila',
+    mensagem: 'Informe por que este processo deve sair do andamento e voltar para a fila.\nEx.: processo suspenso, paralisado, devolvido pelo setor ou desistência.',
+    placeholder: 'Descreva o motivo do retorno para a fila...',
+    textarea: true,
+    ok: 'Continuar'
+  }, function(motivo) {
+    if (motivo.length < 8) {
+      toast('Informe uma justificativa um pouco mais completa.', 'err');
+      return;
+    }
+    dialogoConfirmar_(
+      'Confirmar retorno à fila',
+      'O processo sairá da lista de andamento e aparecerá na aba Fila. O status atual, o D0 e as etapas já concluídas serão preservados; os avisos de atraso ficarão suspensos enquanto ele estiver na fila.',
+      function() {
+        google.script.run
+          .withSuccessHandler(function(res) {
+            if (res && res.ok) {
+              toast('↩ Processo retornado para a fila.', 'ok');
+              fecharProc();
+              HIST_CARREGADO = false;
+              CAP_CARREGADO = false;
+              FILA_ORDER = []; FILA_SEL = {}; FILA_SERV = {}; FILA_D0 = {}; FILA_EXPAND = {};
+              setTimeout(function() { carregarDados(); switchTab('fila'); }, 700);
+            } else {
+              toast('Erro: ' + (res && res.erro ? res.erro : 'Não foi possível retornar para a fila.'), 'err');
+            }
+          })
+          .withFailureHandler(function(e) { toast('Erro: ' + (e.message || e), 'err'); })
+          .devolverProcessoFilaApp({ processoId: p.id, servidor: SERVIDOR, motivo: motivo, authToken: AUTH_TOKEN });
+      },
+      'Voltar para fila'
+    );
   });
 }
 
@@ -2152,15 +2204,16 @@ function _d0FilaPadrao_(p, fallback) {
 function renderFila_() {
   var cont = document.getElementById('tab-fila');
   if (!cont) return;
-  var planejamento = DATA.filter(function(p){ return p.status === 'planejamento'; });
-  var filaTotal    = FILA.concat(planejamento);
+  var planejamento = DATA.filter(function(p){ return p.status === 'planejamento' && !isRetornoFila_(p); });
+  var retornados   = DATA.filter(function(p){ return isRetornoFila_(p); });
+  var filaTotal    = FILA.concat(retornados).concat(planejamento);
   if (!FILA_ORDER.length || FILA_ORDER.length !== filaTotal.length) {
     FILA_ORDER = filaTotal.slice();
     FILA_SEL = {}; FILA_SERV = {}; FILA_D0 = {}; FILA_EXPAND = {};
   }
   var isChefe_ = CHEFES.indexOf(SERVIDOR) >= 0;
   if (!FILA_ORDER.length) {
-    cont.innerHTML = '<div class="empty"><div class="ei">✅</div><p>Nenhum processo aguardando.</p><p style="font-size:12px;color:var(--muted);margin-top:6px;">Novos processos cadastrados sem D0 aparecerão aqui.</p></div>';
+    cont.innerHTML = '<div class="empty"><div class="ei">✅</div><p>Nenhum processo aguardando.</p><p style="font-size:12px;color:var(--muted);margin-top:6px;">Novos processos sem D0 e processos retornados aparecerão aqui.</p></div>';
     return;
   }
   var nSel = Object.keys(FILA_SEL).filter(function(k){ return FILA_SEL[k]; }).length;
@@ -2168,12 +2221,12 @@ function renderFila_() {
   var hojeStr = hoje.getFullYear()+'-'+String(hoje.getMonth()+1).padStart(2,'0')+'-'+String(hoje.getDate()).padStart(2,'0');
 
   var html = '<div style="margin-bottom:10px;">'
-    + '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Simule datas, ordene por prioridade, atribua responsáveis e inicie os processos.</div>';
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Simule datas, ordene por prioridade, atribua responsáveis e inicie ou reative os processos.</div>';
   if (isChefe_) {
     html += '<button id="btn-iniciar-fila" onclick="iniciarSelecionados_()" '
       + 'style="width:100%;padding:13px;background:'+(nSel?'var(--navy)':'var(--border)')+';color:'+(nSel?'#fff':'var(--muted)')+';border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:'+(nSel?'pointer':'default')+';"'
       + (nSel?'':' disabled')+'>'
-      + (nSel ? '▶ Iniciar ' + nSel + ' processo' + (nSel>1?'s':'') + ' selecionado'+(nSel>1?'s':'') : 'Selecione processos para iniciar')
+      + (nSel ? '▶ Iniciar/Reativar ' + nSel + ' processo' + (nSel>1?'s':'') + ' selecionado'+(nSel>1?'s':'') : 'Selecione processos para iniciar')
       + '</button>';
   }
   html += '</div>';
@@ -2185,6 +2238,12 @@ function renderFila_() {
     var ehPE     = (p.modal||'').toLowerCase().indexOf('preg') >= 0 || (p.modal||'').toLowerCase().indexOf('concorr') >= 0;
     var d0Str    = FILA_D0[p.id] || _d0FilaPadrao_(p, hojeStr);
     var d0Date   = new Date(d0Str + 'T00:00:00');
+    var retornoFila = isRetornoFila_(p);
+    var tipoFila  = retornoFila ? 'RETORNADO' : (p.status === 'planejamento' ? 'A INICIAR' : 'SEM D0');
+    var tipoBg    = retornoFila ? '#fef3c7' : (p.status === 'planejamento' ? '#f1f5f9' : '#fff7ed');
+    var tipoColor = retornoFila ? '#92400e' : (p.status === 'planejamento' ? 'var(--muted)' : 'var(--amber)');
+    var statusPreservado = retornoFila && p.status !== 'retornado' ? (SL[p.status] || p.status) : '';
+    var motivoFila = motivoRetornoFila_(p);
 
     // Simulação
     var simEtapas = _simularEtapas_(p, d0Date);
@@ -2198,10 +2257,12 @@ function renderFila_() {
       + '<div class="fila-card-sel" onclick="toggleFilaSel_(\''+p.id+'\');event.stopPropagation()"><input type="checkbox" '+(sel?'checked':'')+'></div>'
       + '<div class="fila-card-body" style="cursor:pointer;" onclick="toggleFilaExpand_(\''+p.id+'\')">'
       + '<div style="display:flex;align-items:center;gap:6px;">'
-      + '<span style="font-size:10px;font-weight:700;background:'+(p.status==='planejamento'?'#f1f5f9':'#fff7ed')+';color:'+(p.status==='planejamento'?'var(--muted)':'var(--amber)')+';padding:2px 7px;border-radius:8px;white-space:nowrap;">'+(p.status==='planejamento'?'A INICIAR':'SEM D0')+'</span>'
+      + '<span style="font-size:10px;font-weight:700;background:'+tipoBg+';color:'+tipoColor+';padding:2px 7px;border-radius:8px;white-space:nowrap;">'+tipoFila+'</span>'
       + '<span class="fila-card-nome" style="flex:1">' + esc(p.nome) + '</span>'
       + '</div>'
       + '<div class="fila-card-sub">' + (p.num?esc(p.num)+' · ':'') + esc(p.modal||'') + (p.req?' · '+esc(p.req):'') + '</div>'
+      + (statusPreservado ? '<div style="font-size:11px;color:#475569;margin-top:4px;line-height:1.35;">Status preservado: '+esc(statusPreservado)+'</div>' : '')
+      + (retornoFila && motivoFila ? '<div style="font-size:11px;color:#92400e;margin-top:4px;line-height:1.35;">Motivo: '+esc(motivoFila)+'</div>' : '')
       // Resumo rápido
       + '<div style="display:flex;gap:12px;margin-top:6px;font-size:11px;flex-wrap:wrap;">'
       + '<span style="color:var(--muted);">D0: <b style="color:var(--text2);">'+_fmtBR_(d0Date)+'</b></span>'
@@ -2362,10 +2423,10 @@ function iniciarSelecionados_() {
   google.script.run
     .withSuccessHandler(function(res) {
       if (res && res.ok) {
-        toast('✓ ' + res.iniciados + ' processo' + (res.iniciados>1?'s iniciados':'  iniciado') + '!', 'ok');
-        FILA_ORDER = []; FILA_SEL = {}; FILA_SERV = {};
+        toast('✓ ' + res.iniciados + ' processo' + (res.iniciados>1?'s iniciados/reativados':' iniciado/reativado') + '!', 'ok');
+        FILA_ORDER = []; FILA_SEL = {}; FILA_SERV = {}; FILA_D0 = {}; FILA_EXPAND = {};
         setTimeout(carregarDados, 800);
-      } else { toast('Erro: ' + (res && res.erro ? res.erro : ''), 'err'); if (btn) { btn.disabled = false; btn.textContent = '▶ Iniciar'; } }
+      } else { toast('Erro: ' + (res && res.erro ? res.erro : ''), 'err'); if (btn) { btn.disabled = false; btn.textContent = '▶ Iniciar/Reativar'; } }
     })
     .withFailureHandler(function(e) { toast('Erro: ' + (e.message||e), 'err'); if (btn) { btn.disabled = false; } })
     .iniciarProcessos(params, AUTH_TOKEN);

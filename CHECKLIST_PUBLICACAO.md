@@ -36,8 +36,11 @@
 - Abrir Etapas.
 - Concluir uma etapa.
 - Regredir uma etapa.
+- Voltar um processo em andamento para a Fila com justificativa.
+- Confirmar que o status real foi preservado e que o processo saiu dos avisos de atraso.
 - Abrir Fila.
 - Iniciar processo pela Fila.
+- Reativar pela Fila um processo marcado como retorno para fila.
 - Abrir Capacidade.
 - Salvar pontuacao.
 - Salvar Outros.

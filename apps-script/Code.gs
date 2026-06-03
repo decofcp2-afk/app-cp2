@@ -272,6 +272,10 @@ function _normText_(s) {
     .normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
+function _isRetornoFilaMotivo_(motivo) {
+  return _normText_(motivo).indexOf('retorno para fila:') === 0;
+}
+
 function _isEtapaContratual_(fase, nome) {
   var f = _normText_(fase);
   var n = _normText_(nome);
@@ -301,6 +305,14 @@ function _statusPlanilha_(s) {
     atrasado: 'Atrasado'
   };
   return map[n] || s;
+}
+
+function _setValorPreservandoValidacao_(range, value) {
+  var dv = range.getDataValidation();
+  if (dv) range.clearDataValidations();
+  range.setValue(value);
+  if (dv) range.setDataValidation(dv);
+  return range;
 }
 
 function _isModalidadeExtSegregada_(modalidade) {
@@ -1086,6 +1098,7 @@ function _getEtapasParaApp_(sess) {
       }
 
       var histKey = p.id + '||' + et.nome;
+      var retornoFilaEt = et.status === 'retornado' || _isRetornoFilaMotivo_(et.motivo);
       return {
         linha:         et.linha,
         prazo:         et.prazo,
@@ -1093,6 +1106,7 @@ function _getEtapasParaApp_(sess) {
         agente:        et.agente,
         fase:          et.fase,
         status:        et.status,
+        retornoFila:   retornoFilaEt,
         motivo:        et.motivo,
         dias:          atraso,
         ini_iso:       _toIso_(ini),
@@ -1107,6 +1121,7 @@ function _getEtapasParaApp_(sess) {
     var concl    = semNA.filter(function(e) { return e.status === 'ok'; }).length;
     var execucao = semNA.length ? Math.round(concl / semNA.length * 100) : 0;
 
+    var retornoFila = etCalc.some(function(e){ return e.retornoFila; });
     var st = 'planejamento';
     if (execucao === 100)                                          st = 'ok';
     else if (etCalc.some(function(e){ return e.status==='atrasado';  })) st = 'atrasado';
@@ -1114,6 +1129,7 @@ function _getEtapasParaApp_(sess) {
     else if (etCalc.some(function(e){ return e.status==='paralisado';})) st = 'paralisado';
     else if (etCalc.some(function(e){ return e.status==='andamento'; })) st = 'andamento';
     else if (concl > 0)                                                 st = 'andamento';
+    else if (etCalc.some(function(e){ return e.status==='retornado'; })) st = 'retornado';
 
     // modalAbrev: 'PE' para Pregão/Concorrência, 'CD' para Contratação Direta/Dispensa
     var mNorm = p.modal.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
@@ -1137,10 +1153,14 @@ function _getEtapasParaApp_(sess) {
       }
     }
 
+    var etapaRetornada = etCalc.find(function(e){ return e.retornoFila; }) || null;
+
     return {
       id: p.id, num: p.num || p.id, nome: p.nome, modal: p.modal, modalAbrev: mAbrev,
       req: p.req, emailR: p.emailR, suap: p.suap, d0_iso: _toIso_(p.d0),
       execucao: execucao, status: st,
+      retornoFila: retornoFila,
+      motivoFila: etapaRetornada ? etapaRetornada.motivo : '',
       servidor:    srvInt,
       servidorExt: srvExt,
       etapaAtualIdx: etapaAtualIdx,
@@ -1148,9 +1168,13 @@ function _getEtapasParaApp_(sess) {
     };
   });
 
-  // Ordena: atrasado → aguardando → paralisado → andamento → planejamento → ok
-  var ORD = { atrasado:0, aguardando:1, paralisado:2, andamento:3, planejamento:4, ok:5 };
-  resultado.sort(function(a, b) { return (ORD[a.status]||6) - (ORD[b.status]||6); });
+  // Ordena: atrasado → aguardando → paralisado → retornado → andamento → planejamento → ok
+  var ORD = { atrasado:0, aguardando:1, paralisado:2, retornado:3, andamento:4, planejamento:5, ok:6 };
+  resultado.sort(function(a, b) {
+    var oa = Object.prototype.hasOwnProperty.call(ORD, a.status) ? ORD[a.status] : 6;
+    var ob = Object.prototype.hasOwnProperty.call(ORD, b.status) ? ORD[b.status] : 6;
+    return oa - ob;
+  });
 
   // Enriquece filaPrevisao com prazos das etapas (para simulação no app)
   filaPrevisao = filaPrevisao.map(function(fp) {
@@ -1181,6 +1205,7 @@ function iniciarProcessos(params, authToken) {
     var iId = hP.indexOf('ProcessoID');
     var iD0 = hP.indexOf('D0 (Data Abertura)');
     var iModal = hP.indexOf('Modalidade');
+    var iStatusProc = hP.indexOf('Status');
     if (iId < 0 || iD0 < 0) throw new Error('Colunas não encontradas na aba Processos.');
 
     var lE   = _lerAba_(shE, 'ProcessoID');
@@ -1190,6 +1215,8 @@ function iniciarProcessos(params, authToken) {
     var iFas = hE.indexOf('Fase');
     var iNom = hE.indexOf('Etapa');
     var iSta = hE.indexOf('StatusEtapa ◄ EDITAR');
+    var iMot = hE.indexOf('MotivoAtraso ◄ EDITAR');
+    var iDat = hE.indexOf('DataRealizacao◄ EDITAR');
 
     var modalPorPid = {};
     for (var mp = lP.hIdx + 1; mp < lP.values.length; mp++) {
@@ -1211,6 +1238,7 @@ function iniciarProcessos(params, authToken) {
           if (item.d0) {
             shP.getRange(r + 1, iD0 + 1).setValue(d0Obj).setNumberFormat('DD/MM/YYYY');
           }
+          if (iStatusProc >= 0) _setValorPreservandoValidacao_(shP.getRange(r + 1, iStatusProc + 1), 'Em andamento');
           iniciados++;
           break;
         }
@@ -1234,7 +1262,9 @@ function iniciarProcessos(params, authToken) {
         }
       }
       if (primeiraEtapa && iSta >= 0) {
-        shE.getRange(primeiraEtapa, iSta + 1).setValue('Em andamento');
+        _setValorPreservandoValidacao_(shE.getRange(primeiraEtapa, iSta + 1), 'Em andamento');
+        if (iMot >= 0) shE.getRange(primeiraEtapa, iMot + 1).clearContent();
+        if (iDat >= 0) shE.getRange(primeiraEtapa, iDat + 1).clearContent();
       }
       _setCapacidadeAtivo_(item.pid, 'interna', 'Sim');
       _setCapacidadeAtivo_(item.pid, 'externa', 'Não');
@@ -1521,7 +1551,7 @@ function _appendHist_(e) {
 //   Processo de servidor:
 //     → Chefia do SEL + Servidor responsável + Setor Requisitante
 //
-// Não envia para processos concluídos (ok), planejamento/a iniciar ou suspensos.
+// Não envia para processos concluídos (ok), planejamento/a iniciar, suspensos ou devolvidos para a fila.
 function enviarAvisosPrazo() {
   var emailsConfig = _getEmails_({ isChefe: true, nome: 'Sistema' });
   var dadosRaw = _getEtapasParaApp_({ isChefe: true, nome: 'Sistema' });
@@ -1621,11 +1651,11 @@ function enviarAvisosPrazo() {
   var avisosVencidos = [];
 
   dados.forEach(function(p) {
-    // Pula concluídos, processos ainda não iniciados e processos suspensos/paralisados.
-    if (p.status === 'ok' || p.status === 'planejamento' || statusParado_(p.status)) return;
+    // Pula concluídos, processos ainda não iniciados, suspensos/paralisados e devolvidos para a fila.
+    if (p.status === 'ok' || p.status === 'planejamento' || p.retornoFila || statusParado_(p.status)) return;
 
     p.etapas.forEach(function(et) {
-      if (et.status === 'ok' || et.status === 'na' || statusParado_(et.status) || !et.fim_iso) return;
+      if (et.status === 'ok' || et.status === 'na' || et.retornoFila || statusParado_(et.status) || !et.fim_iso) return;
       var fim  = new Date(et.fim_iso + 'T00:00:00');
       var diff = _contDU_(hoje, fim); // positivo = dias até vencer; negativo = já venceu
       var aguardaReq = p.status === 'aguardando' || et.status === 'aguardando';
@@ -2096,7 +2126,8 @@ function _sincronizarCapacidadeComEtapas_() {
       nome: hE.indexOf('Etapa'),
       agente: hE.indexOf('Agente Responsável'),
       fase: hE.indexOf('Fase'),
-      status: hE.indexOf('StatusEtapa ◄ EDITAR')
+      status: hE.indexOf('StatusEtapa ◄ EDITAR'),
+      motivo: hE.indexOf('MotivoAtraso ◄ EDITAR')
     };
     if (iE.pid < 0 || iE.agente < 0 || iE.status < 0) return { criados: 0, reativados: 0 };
 
@@ -2112,7 +2143,8 @@ function _sincronizarCapacidadeComEtapas_() {
       etapas[pidE].push({
         agente: String(er[iE.agente] || '').trim(),
         fase: faseE,
-        status: _normStatus_(er[iE.status])
+        status: _normStatus_(er[iE.status]),
+        retornoFila: iE.motivo >= 0 && _isRetornoFilaMotivo_(er[iE.motivo])
       });
     }
 
@@ -2156,6 +2188,15 @@ function _sincronizarCapacidadeComEtapas_() {
         if (st === 'ok') concl++;
         if (!atual && ['andamento','aguardando','paralisado','atrasado'].indexOf(st) >= 0) atual = lista[i];
         if (!primeiraPendente && st === 'pendente') primeiraPendente = lista[i];
+      }
+      if (lista.some(function(item){ return item.retornoFila || item.status === 'retornado'; })) {
+        ['int','ext'].forEach(function(k) {
+          var filaKey = pid + '|' + k;
+          if (capMap[filaKey] && _isSim_(capMap[filaKey].ativo)) {
+            shC.getRange(capMap[filaKey].row, iAtivo + 1).setValue('Não');
+          }
+        });
+        return;
       }
       var concluido = aplicaveis > 0 && concl >= aplicaveis;
       if (concluido) {
@@ -2531,7 +2572,7 @@ function atualizarStatusEtapa(linha, novoStatus, authToken) {
     var iPid = lE.header.indexOf('ProcessoID');
     var iFase = lE.header.indexOf('Fase');
     if (iStatus < 0) throw new Error('Coluna StatusEtapa não encontrada.');
-    sh.getRange(linha, iStatus + 1).setValue(_statusPlanilha_(novoStatus));
+    _setValorPreservandoValidacao_(sh.getRange(linha, iStatus + 1), _statusPlanilha_(novoStatus));
     var rowVals = lE.values[linha - 1] || [];
     var pid = iPid >= 0 ? String(rowVals[iPid] || '').trim() : '';
     var fase = iFase >= 0 ? String(rowVals[iFase] || '').trim() : '';
@@ -2594,7 +2635,7 @@ function regredirEtapa(params) {
     var nomeAnterior = String(lE.values[idxAnterior][iNome] || '').trim();
     var nomeAtual = String(rowAtual[iNome] || params.etapaAtual || '').trim();
 
-    sh.getRange(linhaAnterior, iStatus + 1).setValue('Em andamento');
+    _setValorPreservandoValidacao_(sh.getRange(linhaAnterior, iStatus + 1), 'Em andamento');
     if (iData >= 0) sh.getRange(linhaAnterior, iData + 1).clearContent();
     if (iMotivo >= 0) sh.getRange(linhaAnterior, iMotivo + 1).clearContent();
 
@@ -2620,6 +2661,94 @@ function regredirEtapa(params) {
   } catch(e) {
     return { ok: false, erro: e.message };
   }
+  });
+}
+
+function devolverProcessoFilaApp(params) {
+  return _withAppLockResult_('devolver processo para fila', function() {
+    try {
+      params = params || {};
+      _authRequire_(params.authToken, true);
+      var pid = String(params.processoId || params.pid || '').trim();
+      var motivo = String(params.motivo || '').trim();
+      var servidor = String(params.servidor || '').trim() || '—';
+      if (!pid) throw new Error('Processo não informado.');
+      if (motivo.length < 8) throw new Error('Informe o motivo do retorno para a fila.');
+
+      var ss = _ss_();
+      var shP = ss.getSheetByName(ABA_PROC);
+      var shE = ss.getSheetByName(ABA_ETP);
+      if (!shP || !shE) throw new Error('Abas obrigatórias não encontradas.');
+
+      var lP = _lerAba_(shP, 'ProcessoID');
+      var hP = lP.header;
+      var iPidP = hP.indexOf('ProcessoID');
+      if (iPidP < 0) throw new Error('Coluna ProcessoID não encontrada em Processos.');
+      var existeProc = false;
+      for (var rp = lP.hIdx + 1; rp < lP.values.length; rp++) {
+        if (String(lP.values[rp][iPidP] || '').trim() === pid) {
+          existeProc = true;
+          break;
+        }
+      }
+      if (!existeProc) throw new Error('Processo não encontrado.');
+
+      var lE = _lerAba_(shE, 'ProcessoID');
+      var hdr = lE.header;
+      var iPid = hdr.indexOf('ProcessoID');
+      var iNome = hdr.indexOf('Etapa');
+      var iFase = hdr.indexOf('Fase');
+      var iStatus = hdr.indexOf('StatusEtapa ◄ EDITAR');
+      var iMotivo = hdr.indexOf('MotivoAtraso ◄ EDITAR');
+      if (iPid < 0 || iNome < 0 || iStatus < 0) throw new Error('Colunas obrigatórias não encontradas na aba Etapas.');
+      if (iMotivo < 0) throw new Error('Coluna MotivoAtraso não encontrada na aba Etapas.');
+
+      var idxAlvo = -1;
+      var idxPrimeiraPendente = -1;
+      var idxRetornada = -1;
+      var concluidas = 0;
+      for (var i = lE.hIdx + 1; i < lE.values.length; i++) {
+        var row = lE.values[i] || [];
+        if (String(row[iPid] || '').trim() !== pid) continue;
+        var fase = iFase >= 0 ? String(row[iFase] || '').trim() : '';
+        var nome = String(row[iNome] || '').trim();
+        if (!nome || _isEtapaContratual_(fase, nome)) continue;
+        var st = _normStatus_(row[iStatus]);
+        if (st === 'na') continue;
+        if (st === 'ok') { concluidas++; continue; }
+        if ((st === 'retornado' || _isRetornoFilaMotivo_(row[iMotivo])) && idxRetornada < 0) idxRetornada = i;
+        if (st === 'pendente' && idxPrimeiraPendente < 0) idxPrimeiraPendente = i;
+        if (idxAlvo < 0 && ['andamento','aguardando','paralisado','atrasado','retornado'].indexOf(st) >= 0) idxAlvo = i;
+      }
+      if (idxAlvo < 0) idxAlvo = idxRetornada >= 0 ? idxRetornada : idxPrimeiraPendente;
+      if (idxAlvo < 0) throw new Error('Não encontrei etapa aplicável para marcar o retorno à fila.');
+
+      var linhaAlvo = idxAlvo + 1;
+      var nomeAlvo = String(lE.values[idxAlvo][iNome] || '').trim();
+      var statusPreservado = _normStatus_(lE.values[idxAlvo][iStatus]);
+      var motivoAnterior = String(lE.values[idxAlvo][iMotivo] || '').trim();
+      var motivoMarcado = 'RETORNO PARA FILA: ' + motivo;
+      if (motivoAnterior && !_isRetornoFilaMotivo_(motivoAnterior)) {
+        motivoMarcado += '\nMOTIVO ANTERIOR: ' + motivoAnterior;
+      }
+      shE.getRange(linhaAlvo, iMotivo + 1).setValue(motivoMarcado);
+
+      _setCapacidadeAtivo_(pid, 'interna', 'Não');
+      _setCapacidadeAtivo_(pid, 'externa', 'Não');
+      _appendHist_({
+        ts: new Date(),
+        pid: pid,
+        etapa: nomeAlvo,
+        servidor: servidor,
+        motivo: 'RETORNO PARA FILA: ' + motivo,
+        dias: 0,
+        dataRealiz: ''
+      });
+      _limparCacheCapacidade_();
+      return { ok: true, etapa: nomeAlvo, statusPreservado: statusPreservado, concluidasPreservadas: concluidas };
+    } catch(e) {
+      return { ok: false, erro: e.message };
+    }
   });
 }
 
