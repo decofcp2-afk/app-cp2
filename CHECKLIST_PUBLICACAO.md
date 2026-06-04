@@ -14,6 +14,7 @@
   - Quem pode acessar: `Qualquer pessoa`.
 - Autorizar as permissoes solicitadas pelo Google.
 - Copiar a URL final terminada em `/exec`.
+- Conferir em `Acionadores` se nao existe acionador antigo de conta pessoal para `enviarAvisosPrazo`.
 
 ## 2. GitHub Pages
 
@@ -48,7 +49,8 @@
 - Abrir Configuracoes como chefia.
 - Editar equipe.
 - Editar e-mails.
-- Instalar trigger.
+- Instalar/Reinstalar trigger pela conta DECOF.
+- Confirmar que os acionadores ficaram separados: prazos proximos por volta de 10h30 e etapas vencidas por volta de 14h, de segunda a sexta.
 - Testar e-mail.
 - Enviar avisos agora.
 
@@ -58,3 +60,4 @@
 - Confirmar que o repositorio nao tem e-mail pessoal.
 - Confirmar que nao ha planilhas, PDFs ou documentos administrativos no repositorio.
 - Confirmar que o Apps Script usa propriedades do script para dados sensiveis.
+- Confirmar que os avisos automaticos aparecem como acionadores da conta institucional e que a conta pessoal nao envia mais e-mails.

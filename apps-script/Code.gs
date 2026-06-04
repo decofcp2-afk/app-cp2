@@ -28,10 +28,15 @@ var EMAILS_SEL   = {
   'Samuel':  'COLE_EMAIL_SAMUEL'
 };
 var DIAS_AVISO = 3; // dias úteis de antecedência para enviar aviso de prazo
-var AVISO_HORA = 10;
-var AVISO_MINUTO = 30;
-var AVISO_HORA_LABEL = '10h30';
+var AVISO_PROXIMOS_HORA = 10;
+var AVISO_PROXIMOS_MINUTO = 30;
+var AVISO_PROXIMOS_LABEL = '10h30';
+var AVISO_VENCIDOS_HORA = 14;
+var AVISO_VENCIDOS_MINUTO = 0;
+var AVISO_VENCIDOS_LABEL = '14h';
+var AVISO_HORARIOS_LABEL = AVISO_PROXIMOS_LABEL + ' prazos proximos; ' + AVISO_VENCIDOS_LABEL + ' etapas vencidas';
 var CALENDARIO_MUNICIPIO_FALLBACK = 'Rio de Janeiro';
+var AVISOS_DIAS_LABEL = 'segunda a sexta-feira';
 // ─────────────────────────────────────────────────────────────────────────
 
 // Configuração sustentável:
@@ -1665,7 +1670,7 @@ function _appendHist_(e) {
 }
 
 // ── enviarAvisosPrazo ─────────────────────────────────────────────────────
-// Trigger diário (10h30). Dois tipos de aviso:
+// Triggers de segunda a sexta: prazos proximos as 10h30 e vencidos as 14h.
 //   1. Prazo próximo  — etapa vence em até DIAS_AVISO dias úteis
 //   2. Prazo vencido  — etapa deveria ter sido concluída mas não foi
 //
@@ -1680,7 +1685,26 @@ function _appendHist_(e) {
 //     → Chefia do SEL + Servidor responsável + Setor Requisitante
 //
 // Não envia para processos concluídos (ok), planejamento/a iniciar, suspensos ou devolvidos para a fila.
-function enviarAvisosPrazo() {
+function _avisosPodeEnviarHoje_(data) {
+  var d = data || new Date();
+  var dow = d.getDay();
+  return dow !== 0 && dow !== 6;
+}
+
+function enviarAvisosPrazo(modo) {
+  modo = String(modo || 'todos').toLowerCase();
+  var enviarProximos = modo === 'todos' || modo === 'proximos';
+  var enviarVencidos = modo === 'todos' || modo === 'vencidos';
+  if (!enviarProximos && !enviarVencidos) {
+    enviarProximos = true;
+    enviarVencidos = true;
+  }
+
+  var agoraEnvio = new Date();
+  if (!_avisosPodeEnviarHoje_(agoraEnvio)) {
+    return 'Avisos nao enviados: rotina limitada a ' + AVISOS_DIAS_LABEL + '.';
+  }
+
   var emailsConfig = _getEmails_({ isChefe: true, nome: 'Sistema' });
   var dadosRaw = _getEtapasParaApp_({ isChefe: true, nome: 'Sistema' });
   // Suporta tanto retorno antigo (array) quanto novo ({processos, filaPrevisao})
@@ -1796,7 +1820,7 @@ function enviarAvisosPrazo() {
     });
   });
 
-  var total = avisosProximos.length + avisosVencidos.length;
+  var total = (enviarProximos ? avisosProximos.length : 0) + (enviarVencidos ? avisosVencidos.length : 0);
   if (!total) return 'Nenhum aviso para enviar hoje.';
 
   // ── Processa cada aviso individualmente ───────────────────────────────
@@ -1936,10 +1960,18 @@ function enviarAvisosPrazo() {
     }
   }
 
-  avisosProximos.forEach(function(av) { processarAviso(av, 'proximo'); });
-  avisosVencidos.forEach(function(av) { processarAviso(av, 'vencido'); });
+  if (enviarProximos) avisosProximos.forEach(function(av) { processarAviso(av, 'proximo'); });
+  if (enviarVencidos) avisosVencidos.forEach(function(av) { processarAviso(av, 'vencido'); });
 
-  return 'E-mails enviados: ' + enviados + ' (' + avisosProximos.length + ' próximos + ' + avisosVencidos.length + ' vencidos).';
+  return 'E-mails enviados: ' + enviados + ' (' + (enviarProximos ? avisosProximos.length : 0) + ' proximos + ' + (enviarVencidos ? avisosVencidos.length : 0) + ' vencidos).';
+}
+
+function enviarAvisosPrazoProximos() {
+  return enviarAvisosPrazo('proximos');
+}
+
+function enviarAvisosPrazoVencidos() {
+  return enviarAvisosPrazo('vencidos');
 }
 
 function enviarAvisosPrazoApp(authToken) {
@@ -3180,39 +3212,78 @@ function salvarEmail(servidor, email, authToken) {
 
 // ── instalarTriggerAvisos ─────────────────────────────────────────────────
 // Chamada pelo botão "Instalar trigger" no app.
-// Remove trigger anterior (se existir) e instala novo às 10h30 diariamente.
+// Remove triggers anteriores (se existirem) e instala novos em dois horarios, de segunda a sexta.
 function instalarTriggerAvisos(authToken) {
   return _withAppLock_('instalar trigger de avisos', function() {
     _authRequire_(authToken, true);
+    var handlersAviso = ['enviarAvisosPrazo', 'enviarAvisosPrazoProximos', 'enviarAvisosPrazoVencidos'];
     ScriptApp.getProjectTriggers().forEach(function(t) {
-      if (t.getHandlerFunction() === 'enviarAvisosPrazo') ScriptApp.deleteTrigger(t);
+      if (handlersAviso.indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
     });
-    ScriptApp.newTrigger('enviarAvisosPrazo').timeBased().everyDays(1).atHour(AVISO_HORA).nearMinute(AVISO_MINUTO).create();
+    var diasUteis = [
+      ScriptApp.WeekDay.MONDAY,
+      ScriptApp.WeekDay.TUESDAY,
+      ScriptApp.WeekDay.WEDNESDAY,
+      ScriptApp.WeekDay.THURSDAY,
+      ScriptApp.WeekDay.FRIDAY
+    ];
+    diasUteis.forEach(function(dia) {
+      ScriptApp.newTrigger('enviarAvisosPrazoProximos')
+        .timeBased()
+        .onWeekDay(dia)
+        .atHour(AVISO_PROXIMOS_HORA)
+        .nearMinute(AVISO_PROXIMOS_MINUTO)
+        .create();
+      ScriptApp.newTrigger('enviarAvisosPrazoVencidos')
+        .timeBased()
+        .onWeekDay(dia)
+        .atHour(AVISO_VENCIDOS_HORA)
+        .nearMinute(AVISO_VENCIDOS_MINUTO)
+        .create();
+    });
     PropertiesService.getScriptProperties().setProperties({
       SEL_TRIGGER_AVISOS_INSTALADO_EM: new Date().toISOString(),
-      SEL_TRIGGER_AVISOS_HORA: AVISO_HORA_LABEL,
-      SEL_TRIGGER_AVISOS_TZ: Session.getScriptTimeZone()
+      SEL_TRIGGER_AVISOS_HORA: AVISO_HORARIOS_LABEL,
+      SEL_TRIGGER_AVISOS_PROXIMOS_HORA: AVISO_PROXIMOS_LABEL,
+      SEL_TRIGGER_AVISOS_VENCIDOS_HORA: AVISO_VENCIDOS_LABEL,
+      SEL_TRIGGER_AVISOS_TZ: Session.getScriptTimeZone(),
+      SEL_TRIGGER_AVISOS_DIAS: AVISOS_DIAS_LABEL
     });
-    return 'Trigger instalado. Avisos serão enviados todos os dias por volta das ' + AVISO_HORA_LABEL + '.';
+    return 'Triggers instalados. Prazos proximos: ' + AVISO_PROXIMOS_LABEL + '; etapas vencidas: ' + AVISO_VENCIDOS_LABEL + ', de ' + AVISOS_DIAS_LABEL + '.';
   });
 }
 
 // ── verificarTriggerAvisos ────────────────────────────────────────────────
-// Informa se o trigger diário de avisos está instalado.
+// Informa se os triggers de avisos estao instalados.
 function verificarTriggerAvisos(authToken) {
   try {
     _authRequire_(authToken, false);
     var triggers = ScriptApp.getProjectTriggers();
     var props = PropertiesService.getScriptProperties();
+    var temProximos = false;
+    var temVencidos = false;
+    var temLegado = false;
     for (var i = 0; i < triggers.length; i++) {
-      if (triggers[i].getHandlerFunction() === 'enviarAvisosPrazo') {
-        return {
-          instalado: true,
-          hora: props.getProperty('SEL_TRIGGER_AVISOS_HORA') || AVISO_HORA_LABEL,
-          timezone: props.getProperty('SEL_TRIGGER_AVISOS_TZ') || Session.getScriptTimeZone(),
-          instaladoEm: props.getProperty('SEL_TRIGGER_AVISOS_INSTALADO_EM') || ''
-        };
-      }
+      var handler = triggers[i].getHandlerFunction();
+      if (handler === 'enviarAvisosPrazoProximos') temProximos = true;
+      if (handler === 'enviarAvisosPrazoVencidos') temVencidos = true;
+      if (handler === 'enviarAvisosPrazo') temLegado = true;
+    }
+    if (temProximos && temVencidos) {
+      return {
+        instalado: true,
+        hora: props.getProperty('SEL_TRIGGER_AVISOS_HORA') || AVISO_HORARIOS_LABEL,
+        dias: props.getProperty('SEL_TRIGGER_AVISOS_DIAS') || AVISOS_DIAS_LABEL,
+        timezone: props.getProperty('SEL_TRIGGER_AVISOS_TZ') || Session.getScriptTimeZone(),
+        instaladoEm: props.getProperty('SEL_TRIGGER_AVISOS_INSTALADO_EM') || ''
+      };
+    }
+    if (temLegado || temProximos || temVencidos) {
+      return {
+        instalado: false,
+        erro: 'Acionador antigo ou incompleto encontrado. Clique em Instalar/Reinstalar trigger.',
+        timezone: Session.getScriptTimeZone()
+      };
     }
     return { instalado: false, timezone: Session.getScriptTimeZone() };
   } catch(e) { return { instalado: false, erro: e.message }; }

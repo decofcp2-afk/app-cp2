@@ -2,7 +2,7 @@
 
 Aplicacao interna da equipe SEL/SEPMA para gestao das etapas dos processos, fila, capacidade, historico, configuracoes, e-mails e avisos de prazo.
 
-Este projeto foi separado do Painel de Contratacoes. O App Gestao deve ficar em repositorio proprio e em GitHub Pages proprio, porque possui login, escrita na planilha, envio de e-mails e trigger diario.
+Este projeto foi separado do Painel de Contratacoes. O App Gestao deve ficar em repositorio proprio e em GitHub Pages proprio, porque possui login, escrita na planilha, envio de e-mails e acionadores de aviso.
 
 ## Estrutura
 
@@ -47,7 +47,7 @@ O Painel de Contratacoes le a mesma planilha por outro Apps Script, separado e s
 - Reativacao de processos retornados pela aba Fila.
 - Controle de capacidade por servidor e fase.
 - Cadastro e manutencao da equipe.
-- Envio de avisos e trigger diario.
+- Envio de avisos de prazo de segunda a sexta-feira, em dois lotes.
 
 ## Retorno para fila
 
@@ -84,6 +84,18 @@ Use `CHECKLIST_PUBLICACAO.md` como roteiro curto. O resumo e:
 6. Cole essa URL em `config.js`, no campo `apiUrl`.
 7. Mantenha `apiTimeoutMs` em `90000`, salvo se o Apps Script precisar de outro tempo de espera.
 8. Publique este repositorio no GitHub Pages em `main` + `/(root)`.
+
+## Avisos por e-mail
+
+Os avisos automaticos sao enviados pelo Google Apps Script usando a conta que instalou os acionadores. Por isso, em producao, instale ou reinstale os acionadores estando logado na conta institucional da DECOF.
+
+Regras atuais:
+
+- Os acionadores rodam de segunda a sexta-feira em dois horarios: prazos proximos por volta de 10h30 e etapas vencidas por volta de 14h.
+- Quando houver e-mail do requisitante cadastrado, ele acompanha o lote correspondente: 10h30 se o prazo estiver proximo, 14h se a etapa estiver vencida.
+- O codigo tambem possui uma trava interna para nao enviar no sabado ou domingo.
+- Se existir acionador antigo em conta pessoal, ele deve ser excluido em `Apps Script > Acionadores`.
+- Processos devolvidos para a fila, suspensos/paralisados ou ainda em planejamento nao enviam aviso de atraso.
 
 ## Calendario de feriados oficiais
 

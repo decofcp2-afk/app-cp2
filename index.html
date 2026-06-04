@@ -427,8 +427,8 @@
       <div class="cfg-head">Avisos automáticos de prazo</div>
       <div class="cfg-card">
         <div class="cfg-row cfg-row-col">
-          <label>Trigger diário (10h30)</label>
-          <span class="note">Instala um gatilho que roda todos os dias por volta das 10h30, no fuso do projeto. Processos suspensos não geram e-mail; etapas aguardando requisitante avisam apenas o requisitante cadastrado.</span>
+          <label>Avisos segunda a sexta</label>
+          <span class="note">Instala acionadores para prazos próximos às 10h30 e etapas vencidas às 14h, no fuso do projeto. O requisitante acompanha o lote correspondente quando houver e-mail cadastrado. O remetente é a conta que instalou os acionadores.</span>
           <div class="cfg-actions">
             <button class="btn-cfg" id="btn-trigger" onclick="instalarTrigger()">Instalar trigger</button>
             <button class="btn-cfg" id="btn-trigger-test" onclick="testarEmailAvisos()">Testar e-mail</button>
@@ -2571,7 +2571,10 @@ function aplicarTriggerStatus_(r) {
     btn.disabled = false;
     btn.textContent = 'Reinstalar trigger';
     msg.style.color = 'var(--green)';
-    msg.textContent = '✓ Trigger instalado' + (r.timezone ? ' · fuso ' + r.timezone : '');
+    msg.textContent = '✓ Trigger instalado'
+      + (r.hora ? ' · ' + r.hora : '')
+      + (r.dias ? ' · ' + r.dias : '')
+      + (r.timezone ? ' · fuso ' + r.timezone : '');
   } else if (naoInstalado) {
     btn.disabled = false;
     btn.textContent = 'Instalar trigger';
@@ -2603,7 +2606,7 @@ function instalarTrigger() {
   btn.disabled = true; btn.textContent = 'Instalando…';
   google.script.run
     .withSuccessHandler(function(msg) {
-      aplicarTriggerStatus_({ instalado: true, hora: '10h30' });
+      aplicarTriggerStatus_({ instalado: true, hora: '10h30 prazos próximos; 14h etapas vencidas', dias: 'segunda a sexta-feira' });
       document.getElementById('trigger-ok').textContent = '✓ ' + msg;
       if (DATA.length || FILA.length) aplicarFiltros();
     })
