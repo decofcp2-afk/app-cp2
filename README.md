@@ -131,11 +131,3 @@ Pontos facultativos podem ser avaliados no futuro, mas nao fazem parte da regra 
 - `?route=appsel.call&method=...`
 
 O login no GitHub Pages usa desafio criptografico: a senha digitada nao e enviada aberta na URL. As demais chamadas preservam a compatibilidade com as funcoes atuais do App Gestao e exigem token quando a funcao original ja exigia token.
-
-## Cuidados
-
-- Nao publicar ID real de planilha no GitHub.
-- Nao publicar e-mails pessoais ou PDFs/planilhas reais neste repositorio.
-- Manter o Painel e o App Gestao em repositorios separados.
-- Testar em Chrome, Edge e aba anonima depois de publicar.
-- Testar login preferencialmente no GitHub Pages, com HTTPS. Abrir o `index.html` localmente pode bloquear a validacao criptografica da senha em alguns navegadores.
