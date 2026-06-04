@@ -828,6 +828,7 @@ function _apiCallAppSEL_(method, args) {
     atribuirResponsaveisApp: atribuirResponsaveisApp,
     atualizarStatusEtapa: atualizarStatusEtapa,
     salvarEmailProcesso: salvarEmailProcesso,
+    salvarLinkSuapProcessoApp: salvarLinkSuapProcessoApp,
     salvarNomeProcessoFilaApp: salvarNomeProcessoFilaApp,
     regredirEtapa: regredirEtapa,
     devolverProcessoFilaApp: devolverProcessoFilaApp,
@@ -2699,6 +2700,38 @@ function salvarEmailProcesso(pid, email, authToken) {
       }
     }
     throw new Error('Processo ' + pid + ' não encontrado.');
+    } catch(e) { return { ok: false, erro: e.message }; }
+  });
+}
+
+function salvarLinkSuapProcessoApp(params) {
+  return _withAppLockResult_('salvar link SUAP do processo', function() {
+    try {
+      params = params || {};
+      _authRequire_(params.authToken, false);
+      var pid = String(params.processoId || '').trim();
+      var link = String(params.linkSuap || '').trim();
+      if (!pid) throw new Error('Processo não informado.');
+      if (!/^https?:\/\/\S+$/i.test(link)) {
+        throw new Error('Informe uma URL completa do SUAP, começando com http:// ou https://.');
+      }
+      if (link.length > 500) throw new Error('Link SUAP muito longo.');
+
+      var shP = _ss_().getSheetByName(ABA_PROC);
+      if (!shP) throw new Error('Aba Processos não encontrada.');
+      var lP = _garantirColunas_(shP, 'ProcessoID', ['Link SUAP']);
+      var hP = lP.header;
+      var iId = hP.indexOf('ProcessoID');
+      var iLink = hP.indexOf('Link SUAP');
+      if (iId < 0 || iLink < 0) throw new Error('Coluna ProcessoID ou Link SUAP não encontrada.');
+
+      for (var i = lP.hIdx + 1; i < lP.values.length; i++) {
+        if (String(lP.values[i][iId] || '').trim() === pid) {
+          shP.getRange(i + 1, iLink + 1).setValue(link);
+          return { ok: true, linkSuap: link };
+        }
+      }
+      throw new Error('Processo ' + pid + ' não encontrado.');
     } catch(e) { return { ok: false, erro: e.message }; }
   });
 }

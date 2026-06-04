@@ -489,9 +489,9 @@
   <div class="sheet-header" id="proc-header"></div>
   <div class="sheet-body"   id="proc-body"></div>
   <div class="sheet-footer" id="proc-footer" hidden>
-    <a id="btn-suap" href="#" target="_blank"
+    <a id="btn-suap" href="#" target="_blank" rel="noopener"
        style="display:block;text-align:center;padding:12px;background:var(--bg);border-radius:10px;font-size:13px;font-weight:600;color:var(--navy);text-decoration:none;">
-      🔗 Abrir no SUAP
+      🔗 Acessar processo no SUAP
     </a>
     <button id="btn-email-proc" onclick="editarEmailProcAtivo_()"
        style="margin-top:8px;width:100%;padding:11px;border:1.5px solid var(--border);border-radius:10px;background:var(--bg);font-size:13px;font-weight:600;cursor:pointer;color:var(--text2);">
@@ -1682,13 +1682,7 @@ function abrirProcesso(idx) {
   document.getElementById('proc-body').innerHTML = body;
 
   var footer = document.getElementById('proc-footer');
-  var btnSuap = document.getElementById('btn-suap');
-  if (p.suap && p.suap !== '#') {
-    btnSuap.href = p.suap;
-    btnSuap.hidden = false;
-  } else {
-    btnSuap.hidden = true;
-  }
+  atualizarBotaoSuap_(p);
   var temEmail = p.emailR && p.emailR.indexOf('@') > 0;
   document.getElementById('btn-email-proc-label').textContent =
     temEmail ? 'Editar e-mail do requisitante: ' + p.emailR : 'Adicionar e-mail do requisitante';
@@ -1706,6 +1700,41 @@ function abrirProcesso(idx) {
 function fecharProc() {
   document.getElementById('ov-proc').classList.remove('open');
   document.getElementById('modal-proc').classList.remove('open');
+}
+
+function linkSuapValido_(link) {
+  var s = String(link || '').trim();
+  return !!(s && s !== '#' && /^https?:\/\/\S+$/i.test(s));
+}
+
+function atualizarLinkSuapLocal_(pid, link) {
+  [DATA, FILA, FILA_ORDER].forEach(function(lista) {
+    (lista || []).forEach(function(p) {
+      if (p && p.id === pid) p.suap = link;
+    });
+  });
+  if (PROC_ATI && PROC_ATI.id === pid) PROC_ATI.suap = link;
+}
+
+function atualizarBotaoSuap_(p) {
+  var btnSuap = document.getElementById('btn-suap');
+  if (!btnSuap || !p) return;
+  var temLink = linkSuapValido_(p.suap);
+  btnSuap.hidden = false;
+  btnSuap.href = temLink ? p.suap : '#';
+  btnSuap.textContent = temLink ? '🔗 Acessar processo no SUAP' : '🔗 Inserir link do processo no SUAP';
+  btnSuap.style.color = temLink ? 'var(--navy)' : 'var(--amber)';
+  if (temLink) {
+    btnSuap.target = '_blank';
+    btnSuap.rel = 'noopener';
+    btnSuap.onclick = null;
+  } else {
+    btnSuap.removeAttribute('target');
+    btnSuap.onclick = function(ev) {
+      ev.preventDefault();
+      editarLinkSuapProcAtivo_();
+    };
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1944,6 +1973,37 @@ function editarEmailProcAtivo_() {
       })
       .withFailureHandler(function(e) { toast('Erro: ' + (e.message || e), 'err'); })
       .salvarEmailProcesso(p.id, novo, AUTH_TOKEN);
+  });
+}
+
+function editarLinkSuapProcAtivo_() {
+  var p = PROC_ATI;
+  if (!p) return;
+  dialogoCampo_({
+    titulo: 'Inserir link do processo no SUAP',
+    mensagem: 'Processo: ' + p.nome + '\nCole a URL completa do processo no SUAP.',
+    valor: linkSuapValido_(p.suap) ? p.suap : '',
+    tipo: 'url',
+    placeholder: 'https://suap.cpii.gov.br/...',
+    ok: 'Salvar link'
+  }, function(link) {
+    link = String(link || '').trim();
+    if (!linkSuapValido_(link)) {
+      toast('Informe uma URL completa começando com http:// ou https://.', 'err');
+      return;
+    }
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.ok) {
+          atualizarLinkSuapLocal_(p.id, res.linkSuap || link);
+          atualizarBotaoSuap_(p);
+          toast('✓ Link SUAP salvo!', 'ok');
+        } else {
+          toast('Erro: ' + (res && res.erro ? res.erro : 'Não foi possível salvar o link.'), 'err');
+        }
+      })
+      .withFailureHandler(function(e) { toast('Erro: ' + (e.message || e), 'err'); })
+      .salvarLinkSuapProcessoApp({ processoId: p.id, linkSuap: link, authToken: AUTH_TOKEN });
   });
 }
 
