@@ -85,6 +85,48 @@
     .app-header { background: var(--navy); color: #fff; padding: calc(12px + env(safe-area-inset-top)) 16px 12px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
     .app-header-title { font-weight: 700; font-size: 16px; }
     .app-header-sub { font-size: 11px; opacity: .65; margin-top: 1px; }
+    /* ── Central de notificações ──────────────────────────────────────── */
+    .notif-bell { position: relative; background: rgba(255,255,255,.15); border: none; color: #fff; width: 38px; height: 34px; border-radius: 20px; font-size: 17px; cursor: pointer; margin-right: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .notif-bell:active { background: rgba(255,255,255,.28); }
+    .notif-badge { position: absolute; top: -3px; right: -3px; background: var(--red); color: #fff; border-radius: 10px; padding: 0 5px; font-size: 10px; font-weight: 800; min-width: 17px; height: 17px; line-height: 17px; text-align: center; box-shadow: 0 0 0 2px var(--navy); }
+    .notif-ov { position: fixed; inset: 0; background: rgba(15,23,42,.35); z-index: 9000; }
+    .notif-panel { position: fixed; top: calc(56px + env(safe-area-inset-top)); right: 10px; left: 10px; max-width: 420px; margin-left: auto; background: var(--card); border-radius: 16px; box-shadow: 0 12px 40px rgba(15,23,42,.28); z-index: 9001; display: flex; flex-direction: column; max-height: 76vh; overflow: hidden; }
+    .notif-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+    .notif-title { font-weight: 800; font-size: 15px; color: var(--navy); }
+    .notif-close { background: none; border: none; font-size: 16px; color: var(--muted); cursor: pointer; padding: 4px 6px; line-height: 1; }
+    .notif-tabs { display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .notif-tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; padding: 8px 6px; font-size: 12px; font-weight: 700; color: var(--text2); cursor: pointer; }
+    .notif-tab.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+    .notif-tab-count { background: rgba(0,0,0,.12); border-radius: 9px; padding: 0 6px; font-size: 11px; font-weight: 800; min-width: 18px; text-align: center; }
+    .notif-tab.active .notif-tab-count { background: rgba(255,255,255,.25); }
+    .notif-body { overflow-y: auto; padding: 8px 12px 14px; -webkit-overflow-scrolling: touch; }
+    .notif-daygroup { margin-top: 10px; }
+    .notif-daygroup:first-child { margin-top: 2px; }
+    .notif-dayhdr { font-size: 11px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 6px 2px 6px; }
+    .notif-item { display: flex; gap: 10px; align-items: flex-start; background: #fff; border: 1px solid var(--border); border-left-width: 4px; border-radius: 10px; padding: 10px 11px; margin-bottom: 7px; cursor: pointer; transition: box-shadow .12s; }
+    .notif-item:active { box-shadow: 0 2px 10px rgba(15,23,42,.12); }
+    .notif-item-body { flex: 1; min-width: 0; }
+    .notif-item-proc { font-size: 13px; font-weight: 700; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .notif-item-etapa { font-size: 12px; color: var(--text2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .notif-item-prazo { font-size: 11px; font-weight: 700; margin-top: 4px; }
+    .notif-item-go { color: var(--muted); font-size: 16px; align-self: center; flex-shrink: 0; }
+    .notif-empty { text-align: center; color: var(--muted); padding: 30px 16px; font-size: 13px; }
+    .notif-empty-ic { font-size: 30px; margin-bottom: 8px; }
+    .notif-item-data { font-size: 10px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; margin-top: 2px; }
+    /* ── Pilha de notificações por processo (estilo "Instants") ─────────── */
+    .notif-stack { position: relative; margin-bottom: 16px; cursor: pointer; padding-bottom: 8px; }
+    .notif-stack-l1, .notif-stack-l2 { position: absolute; left: 0; right: 0; bottom: 0; height: 100%; background: #fff; border: 1px solid var(--border); border-radius: 10px; }
+    .notif-stack-l1 { transform: translateY(6px) scale(.965); right: 0; left: 0; z-index: 1; opacity: .9; }
+    .notif-stack-l2 { transform: translateY(12px) scale(.93); z-index: 0; opacity: .7; }
+    .notif-stack-top { position: relative; z-index: 2; margin-bottom: 0; box-shadow: 0 2px 8px rgba(15,23,42,.08); }
+    .notif-stack:active .notif-stack-top { transform: scale(.99); }
+    .notif-stack-count { align-self: center; flex-shrink: 0; color: #fff; font-size: 12px; font-weight: 800; border-radius: 12px; padding: 2px 9px; min-width: 26px; text-align: center; }
+    .notif-stack-open { border: 1px solid var(--border); border-left-width: 4px; border-radius: 12px; margin-bottom: 12px; overflow: hidden; background: var(--bg); }
+    .notif-stack-hdr { display: flex; align-items: center; justify-content: space-between; padding: 11px 12px; cursor: pointer; background: #fff; }
+    .notif-stack-hdr-proc { font-size: 13px; font-weight: 800; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .notif-stack-hdr-ic { color: var(--muted); font-size: 11px; flex-shrink: 0; margin-left: 8px; }
+    .notif-item-inpilha { margin: 0 8px 7px; }
+    .notif-item-inpilha:first-of-type { margin-top: 8px; }
     .user-chip { background: rgba(255,255,255,.15); border-radius: 20px; padding: 5px 11px; font-size: 12px; cursor: pointer; white-space: nowrap; position: relative; }
     .hdr-menu { position: absolute; top: calc(100% + 8px); right: 0; background: var(--card); border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.18); min-width: 170px; z-index: 500; overflow: hidden; }
     .hdr-menu-item { display: flex; align-items: center; gap: 10px; padding: 12px 16px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text); border: none; background: none; width: 100%; text-align: left; }
@@ -101,6 +143,11 @@
     .fila-ord-btn { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 4px; }
     .fila-ord-btn:disabled { opacity: .25; cursor: default; }
     .fila-ord-btn:active { background: var(--bg); }
+    .fila-drag-handle { cursor: grab; color: var(--muted); font-size: 16px; line-height: 1; padding: 4px 2px 8px; user-select: none; touch-action: none; }
+    .fila-drag-handle:active { cursor: grabbing; color: var(--navy); }
+    .fila-card.sortable-ghost { opacity: .4; }
+    .fila-card.sortable-chosen { box-shadow: 0 6px 20px rgba(15,23,42,.18); }
+    .fila-card.sortable-drag { box-shadow: 0 8px 26px rgba(15,23,42,.28); }
     .fila-sim { background: var(--bg); border-radius: 10px; padding: 10px 12px; margin-top: 6px; font-size: 12px; color: var(--text2); }
     .fila-sim-row { display: flex; justify-content: space-between; padding: 2px 0; }
     .fila-sim-row span:first-child { color: var(--muted); }
@@ -348,6 +395,8 @@
     .section-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 16px 0 6px 2px; }
   </style>
   <script src="config.js"></script>
+  <!-- SortableJS: drag-and-drop da fila (degrada para as setas ▲▼ se não carregar) -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 </head>
 <body class="auth-boot">
 
@@ -385,6 +434,9 @@
         <div class="app-header-sub">Colégio Pedro II</div>
       </div>
     </div>
+    <button class="notif-bell" id="notif-bell" onclick="toggleNotif_()" aria-label="Central de notificações" title="Central de notificações">
+      🔔<span id="notif-badge" class="notif-badge" hidden>0</span>
+    </button>
     <div class="user-chip" onclick="toggleHdrMenu_()">👤 <span id="hdr-nome"></span> ⋮
       <div id="hdr-menu" class="hdr-menu" hidden onclick="event.stopPropagation()">
         <button class="hdr-menu-item" id="hdr-config-item" onclick="switchTab('config');toggleHdrMenu_()">⚙️ Configurações</button>
@@ -393,6 +445,22 @@
       </div>
     </div>
   </header>
+  <div id="notif-ov" class="notif-ov" hidden onclick="fecharNotif_()"></div>
+  <div id="notif-panel" class="notif-panel" hidden>
+    <div class="notif-head">
+      <span class="notif-title">Notificações</span>
+      <button class="notif-close" onclick="fecharNotif_()" aria-label="Fechar">✕</button>
+    </div>
+    <div class="notif-tabs">
+      <button class="notif-tab active" id="notif-tab-venc" onclick="setNotifCat_('venc')">
+        Vencidos <span class="notif-tab-count" id="notif-cnt-venc">0</span>
+      </button>
+      <button class="notif-tab" id="notif-tab-prox" onclick="setNotifCat_('prox')">
+        Prazos próximos <span class="notif-tab-count" id="notif-cnt-prox">0</span>
+      </button>
+    </div>
+    <div class="notif-body" id="notif-body"></div>
+  </div>
   <div class="fbar" id="fbar">
     <input type="search" class="fsearch" id="fsearch" placeholder="🔍 Pesquisar por número ou objeto…" oninput="aplicarFiltros()">
     <div class="fpills" id="pills-modal">
@@ -1375,6 +1443,195 @@ function toggleHdrMenu_() {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// CENTRAL DE NOTIFICAÇÕES
+// ══════════════════════════════════════════════════════════════════════
+var NOTIF = { prox: [], venc: [] };
+var NOTIF_CAT = 'venc'; // categoria ativa: 'venc' | 'prox'
+var NOTIF_PILHA_ABERTA = {}; // chave "cat:processoId" → true quando a pilha está expandida
+
+function carregarNotificacoes_() {
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.ok) return;
+      NOTIF.venc = r.vencidos || [];
+      NOTIF.prox = r.proximos || [];
+      atualizarBadgeNotif_();
+      var panel = document.getElementById('notif-panel');
+      if (panel && !panel.hidden) renderNotif_();
+    })
+    .withFailureHandler(function() { /* silencioso — central é auxiliar */ })
+    .getAlertasApp(AUTH_TOKEN);
+}
+
+function atualizarBadgeNotif_() {
+  var total = NOTIF.venc.length + NOTIF.prox.length;
+  var badge = document.getElementById('notif-badge');
+  if (!badge) return;
+  badge.textContent = total > 99 ? '99+' : String(total);
+  badge.hidden = total === 0;
+  document.getElementById('notif-cnt-venc').textContent = NOTIF.venc.length;
+  document.getElementById('notif-cnt-prox').textContent = NOTIF.prox.length;
+}
+
+function toggleNotif_() {
+  var panel = document.getElementById('notif-panel');
+  if (panel.hidden) abrirNotif_(); else fecharNotif_();
+}
+
+function abrirNotif_() {
+  // Abre na categoria com itens; prioriza Vencidos
+  NOTIF_CAT = NOTIF.venc.length ? 'venc' : (NOTIF.prox.length ? 'prox' : 'venc');
+  NOTIF_PILHA_ABERTA = {}; // pilhas começam recolhidas a cada abertura
+  document.getElementById('notif-ov').hidden = false;
+  document.getElementById('notif-panel').hidden = false;
+  atualizarBadgeNotif_();
+  renderNotif_();
+  carregarNotificacoes_(); // refresca ao abrir
+}
+
+function fecharNotif_() {
+  document.getElementById('notif-ov').hidden = true;
+  document.getElementById('notif-panel').hidden = true;
+}
+
+function setNotifCat_(cat) {
+  NOTIF_CAT = cat;
+  document.getElementById('notif-tab-venc').classList.toggle('active', cat === 'venc');
+  document.getElementById('notif-tab-prox').classList.toggle('active', cat === 'prox');
+  renderNotif_();
+}
+
+function _notifFmtDiaHdr_(iso) {
+  if (!iso) return 'Sem data';
+  var p = String(iso).substring(0, 10).split('-');
+  if (p.length !== 3) return String(iso);
+  var d = new Date(p[0]+'-'+p[1]+'-'+p[2]+'T00:00:00');
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var diffDias = Math.round((d - hoje) / 86400000);
+  var br = p[2] + '/' + p[1] + '/' + p[0];
+  if (diffDias === 0) return 'Hoje · ' + br;
+  if (diffDias === 1) return 'Amanhã · ' + br;
+  if (diffDias === -1) return 'Ontem · ' + br;
+  return br;
+}
+
+// Monta o HTML de uma notificação de etapa (usada em item simples e dentro da pilha).
+function _notifItemHtml_(it, ehVenc, cor, pid, onclickExpr, dentroPilha) {
+  var prazoHtml;
+  if (ehVenc) {
+    prazoHtml = '<span style="color:var(--red)">Vencida há ' + it.diasAtraso + ' dia' + (it.diasAtraso > 1 ? 's úteis' : ' útil') + '</span>';
+  } else if (it.dias === 0) {
+    prazoHtml = '<span style="color:var(--red)">Vence hoje</span>';
+  } else {
+    prazoHtml = '<span style="color:var(--amber)">Vence em ' + it.dias + ' dia' + (it.dias > 1 ? 's úteis' : ' útil') + '</span>';
+  }
+  var aguarda = it.aguardandoReq ? ' <span style="color:#92400e;font-weight:700;">· aguarda requisitante</span>' : '';
+  var dataHtml = it.fimIso ? '<div class="notif-item-data">' + esc(_notifFmtDiaHdr_(it.fimIso)) + '</div>' : '';
+  // Dentro da pilha mostramos a etapa em destaque (proc já está no cabeçalho da pilha)
+  var topo = dentroPilha
+    ? '<div class="notif-item-proc">' + esc(it.etapa || 'Etapa') + '</div>' + dataHtml
+    : '<div class="notif-item-proc">' + esc(it.num ? (it.num + ' · ' + (it.nome||'')) : (it.nome || 'Processo')) + '</div>'
+      + '<div class="notif-item-etapa">' + esc(it.etapa || '') + '</div>';
+  return '<div class="notif-item' + (dentroPilha ? ' notif-item-inpilha' : '') + '" style="border-left-color:' + cor + ';" onclick="' + onclickExpr + '">'
+    + '<div class="notif-item-body">'
+    + topo
+    + '<div class="notif-item-prazo">' + prazoHtml + aguarda + '</div>'
+    + '</div>'
+    + '<div class="notif-item-go">›</div>'
+    + '</div>';
+}
+
+function toggleNotifPilha_(chave) {
+  NOTIF_PILHA_ABERTA[chave] = !NOTIF_PILHA_ABERTA[chave];
+  renderNotif_();
+}
+
+function renderNotif_() {
+  var cont = document.getElementById('notif-body');
+  if (!cont) return;
+  var lista = NOTIF_CAT === 'venc' ? NOTIF.venc : NOTIF.prox;
+  var ehVenc = NOTIF_CAT === 'venc';
+
+  if (!lista.length) {
+    cont.innerHTML = '<div class="notif-empty"><div class="notif-empty-ic">'
+      + (ehVenc ? '✅' : '🗓️') + '</div>'
+      + (ehVenc ? 'Nenhuma etapa vencida. Tudo em dia!' : 'Nenhum prazo próximo no momento.')
+      + '</div>';
+    return;
+  }
+
+  // Agrupa por PROCESSO, preservando a ordenação (urgência) já vinda do servidor.
+  // O processo aparece na posição da sua notificação mais urgente.
+  var grupos = [];
+  var idxPorProc = {};
+  lista.forEach(function(it) {
+    var k = it.processoId || ('_' + (it.num || it.nome || ''));
+    if (!(k in idxPorProc)) {
+      idxPorProc[k] = grupos.length;
+      grupos.push({ pid: it.processoId, num: it.num, nome: it.nome, itens: [] });
+    }
+    grupos[idxPorProc[k]].itens.push(it);
+  });
+
+  var html = '';
+  grupos.forEach(function(g) {
+    var proc = g.num ? (g.num + ' · ' + (g.nome||'')) : (g.nome || 'Processo');
+    var n = g.itens.length;
+    // A cor do grupo segue o item mais crítico (vermelho domina âmbar)
+    var corGrupo = ehVenc ? 'var(--red)'
+      : (g.itens.some(function(x){ return x.dias === 0; }) ? 'var(--red)' : 'var(--amber)');
+
+    if (n === 1) {
+      // Sem pilha — item simples; clicar abre o detalhe direto.
+      html += _notifItemHtml_(g.itens[0], ehVenc, corGrupo, g.pid, 'abrirNotifItem_(\'' + esc(g.pid) + '\')');
+      return;
+    }
+
+    // 2+ notificações → pilha (estilo "stories")
+    var chave = NOTIF_CAT + ':' + (g.pid || proc);
+    var aberta = !!NOTIF_PILHA_ABERTA[chave];
+
+    if (!aberta) {
+      // Card recolhido com efeito de pilha + contador "+N"
+      var resumoPrazo = ehVenc
+        ? ('Etapa mais crítica vencida há ' + g.itens[0].diasAtraso + ' dia' + (g.itens[0].diasAtraso > 1 ? 's úteis' : ' útil'))
+        : (g.itens[0].dias === 0 ? 'Etapa mais próxima vence hoje'
+            : 'Etapa mais próxima vence em ' + g.itens[0].dias + ' dia' + (g.itens[0].dias > 1 ? 's úteis' : ' útil'));
+      html += '<div class="notif-stack" onclick="toggleNotifPilha_(\'' + esc(chave) + '\')">'
+        + '<div class="notif-stack-l2"></div>'
+        + '<div class="notif-stack-l1"></div>'
+        + '<div class="notif-item notif-stack-top" style="border-left-color:' + corGrupo + ';">'
+        + '<div class="notif-item-body">'
+        + '<div class="notif-item-proc">' + esc(proc) + '</div>'
+        + '<div class="notif-item-etapa">' + n + ' etapas ' + (ehVenc ? 'vencidas' : 'com prazo próximo') + '</div>'
+        + '<div class="notif-item-prazo" style="color:' + corGrupo + '">' + esc(resumoPrazo) + '</div>'
+        + '</div>'
+        + '<div class="notif-stack-count" style="background:' + corGrupo + '">+' + n + '</div>'
+        + '</div>'
+        + '</div>';
+    } else {
+      // Pilha expandida: cabeçalho + as etapas. Clicar em QUALQUER etapa abre o detalhe.
+      html += '<div class="notif-stack-open" style="border-left-color:' + corGrupo + '">'
+        + '<div class="notif-stack-hdr" onclick="toggleNotifPilha_(\'' + esc(chave) + '\')">'
+        + '<span class="notif-stack-hdr-proc">' + esc(proc) + '</span>'
+        + '<span class="notif-stack-hdr-ic">▲</span>'
+        + '</div>';
+      g.itens.forEach(function(it) {
+        html += _notifItemHtml_(it, ehVenc, corGrupo, g.pid, 'abrirNotifItem_(\'' + esc(g.pid) + '\')', true);
+      });
+      html += '</div>';
+    }
+  });
+  cont.innerHTML = html;
+}
+
+// Clicar numa notificação leva direto ao detalhe do processo (etapas).
+function abrirNotifItem_(pid) {
+  fecharNotif_();
+  abrirProcessoPorId_(pid);
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // CARREGAR DADOS
 // ══════════════════════════════════════════════════════════════════════
 function carregarDados() {
@@ -1401,6 +1658,7 @@ function carregarDados() {
         '<div class="empty"><div class="ei">⚠️</div><p>Erro ao carregar:<br>' + esc(e.message||e) + '</p></div>';
     })
     .getEtapasParaApp(AUTH_TOKEN);
+  carregarNotificacoes_();
 }
 
 function carregarHistorico() {
@@ -1706,6 +1964,21 @@ function abrirProcesso(idx) {
 function fecharProc() {
   document.getElementById('ov-proc').classList.remove('open');
   document.getElementById('modal-proc').classList.remove('open');
+}
+
+// Abre o detalhe (modal) de um processo a partir do seu ID — usado pela
+// central de notificações e pelo botão "Abrir detalhe" da fila.
+function abrirProcessoPorId_(pid) {
+  if (!pid) return;
+  var idx = -1;
+  for (var i = 0; i < DATA.length; i++) {
+    if (DATA[i] && DATA[i].id === pid) { idx = i; break; }
+  }
+  if (idx < 0) {
+    toast('Detalhe indisponível: o processo ainda não tem etapas iniciadas.', 'err');
+    return;
+  }
+  abrirProcesso(idx);
 }
 
 function linkSuapValido_(link) {
@@ -2419,6 +2692,17 @@ function renderFila_() {
   var planejamento = DATA.filter(function(p){ return p.status === 'planejamento' && !isRetornoFila_(p); });
   var retornados   = DATA.filter(function(p){ return isRetornoFila_(p); });
   var filaTotal    = FILA.concat(retornados).concat(planejamento);
+  // Respeita a ordem manual salva (campo ordemFila): itens ordenados primeiro
+  // (crescente), os sem ordem mantêm a posição relativa ao fim. Estável.
+  filaTotal = filaTotal
+    .map(function(item, i){ return { item: item, i: i }; })
+    .sort(function(a, b){
+      var oa = (a.item.ordemFila === null || a.item.ordemFila === undefined) ? Infinity : a.item.ordemFila;
+      var ob = (b.item.ordemFila === null || b.item.ordemFila === undefined) ? Infinity : b.item.ordemFila;
+      if (oa !== ob) return oa - ob;
+      return a.i - b.i;
+    })
+    .map(function(w){ return w.item; });
   if (!FILA_ORDER.length || FILA_ORDER.length !== filaTotal.length) {
     FILA_ORDER = filaTotal.slice();
     FILA_SEL = {}; FILA_SERV = {}; FILA_D0 = {}; FILA_EXPAND = {};
@@ -2463,7 +2747,7 @@ function renderFila_() {
     var ativasFim = simEtapas.filter(function(e){ return !e.na && e.fim; });
     var fimProc   = ativasFim.length ? ativasFim[ativasFim.length-1].fim : null;
 
-    html += '<div class="fila-card" style="border-left:3px solid '+(sel?'var(--navy)':'transparent')+';flex-direction:column;">';
+    html += '<div class="fila-card" data-pid="'+esc(p.id)+'" style="border-left:3px solid '+(sel?'var(--navy)':'transparent')+';flex-direction:column;">';
 
     // Linha principal
     html += '<div style="display:flex;align-items:stretch;">'
@@ -2485,6 +2769,7 @@ function renderFila_() {
       + '</div>'
       + '</div>'
       + '<div class="fila-card-ord">'
+      + (isChefe_ ? '<span class="fila-drag-handle" title="Arraste para reordenar" aria-label="Arraste para reordenar">⋮⋮</span>' : '')
       + '<button class="fila-ord-btn" '+(idx===0?'disabled':'')+' onclick="moverFilaItem_('+idx+',-1)">▲</button>'
       + '<span style="font-size:10px;color:var(--muted);font-weight:700;line-height:1;">'+(idx+1)+'</span>'
       + '<button class="fila-ord-btn" '+(idx===FILA_ORDER.length-1?'disabled':'')+' onclick="moverFilaItem_('+idx+',1)">▼</button>'
@@ -2536,6 +2821,13 @@ function renderFila_() {
           + (!srv.int ? '<span style="background:var(--bg);color:var(--amber);font-size:11px;font-weight:700;padding:2px 8px;border-radius:8px;border:1px dashed var(--amber);">+ Atribuir</span>' : '')
           + '</span></div>';
       }
+      // Botão "Abrir detalhe" — só para processos RETORNADOS (já têm etapas reais).
+      // A INICIAR / SEM D0 só têm simulação, exibida acima nesta própria tabela.
+      if (retornoFila) {
+        html += '<button onclick="event.stopPropagation();abrirProcessoPorId_(\''+p.id+'\')" '
+          + 'style="width:100%;margin-top:12px;padding:11px;background:#fff;color:var(--navy);border:1.5px solid var(--navy);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">'
+          + '🔎 Abrir detalhe do processo</button>';
+      }
       html += '</div>';
     }
 
@@ -2543,6 +2835,58 @@ function renderFila_() {
   });
 
   cont.innerHTML = html;
+  _initFilaDrag_(cont, isChefe_);
+}
+
+// Inicializa o drag-and-drop por alça (⋮⋮). Só para chefia e se SortableJS
+// carregou; caso contrário, as setas ▲▼ continuam sendo o caminho.
+var _filaSortable = null;
+function _initFilaDrag_(cont, isChefe_) {
+  if (_filaSortable) { try { _filaSortable.destroy(); } catch(e){} _filaSortable = null; }
+  if (!isChefe_ || typeof Sortable === 'undefined' || !cont) return;
+  _filaSortable = Sortable.create(cont, {
+    handle: '.fila-drag-handle',
+    draggable: '.fila-card',
+    animation: 150,
+    delay: 0,
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
+    dragClass: 'sortable-drag',
+    onEnd: function() {
+      // Reconstrói FILA_ORDER a partir da nova ordem do DOM
+      var cards = cont.querySelectorAll('.fila-card');
+      var novaOrdem = [];
+      cards.forEach(function(c) {
+        var pid = c.getAttribute('data-pid');
+        var item = FILA_ORDER.find(function(x){ return x && x.id === pid; });
+        if (item) novaOrdem.push(item);
+      });
+      if (novaOrdem.length === FILA_ORDER.length) {
+        FILA_ORDER = novaOrdem;
+        _persistirOrdemFila_();
+        renderFila_(); // re-renderiza para atualizar os números 1,2,3...
+      }
+    }
+  });
+}
+
+// Salva a ordem atual da fila na planilha (só chefia). Degrada com aviso claro
+// se a coluna OrdemFila ainda não existir.
+function _persistirOrdemFila_() {
+  if (!isChefeAtual_()) return;
+  var ordem = FILA_ORDER.map(function(p){ return p.id; });
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (res && res.ok) {
+        toast('Ordem da fila salva.', 'ok');
+      } else if (res && res.semColuna) {
+        toast('Crie a coluna "OrdemFila" na aba Processos para salvar a ordem.', 'err');
+      } else {
+        toast('Erro ao salvar ordem: ' + (res && res.erro ? res.erro : 'tente novamente.'), 'err');
+      }
+    })
+    .withFailureHandler(function(e) { toast('Erro ao salvar ordem: ' + (e.message || e), 'err'); })
+    .salvarOrdemFilaApp({ ordem: ordem, authToken: AUTH_TOKEN });
 }
 
 function toggleFilaSel_(pid) { FILA_SEL[pid] = !FILA_SEL[pid]; renderFila_(); }
@@ -2592,6 +2936,7 @@ function moverFilaItem_(idx, dir) {
   if (novoIdx < 0 || novoIdx >= FILA_ORDER.length) return;
   var tmp = FILA_ORDER[idx]; FILA_ORDER[idx] = FILA_ORDER[novoIdx]; FILA_ORDER[novoIdx] = tmp;
   renderFila_();
+  _persistirOrdemFila_();
 }
 
 // ── Modal de servidor para fila ───────────────────────────────────────

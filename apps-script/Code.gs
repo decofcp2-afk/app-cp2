@@ -830,6 +830,7 @@ function _apiCallAppSEL_(method, args) {
     salvarEmailProcesso: salvarEmailProcesso,
     salvarLinkSuapProcessoApp: salvarLinkSuapProcessoApp,
     salvarNomeProcessoFilaApp: salvarNomeProcessoFilaApp,
+    salvarOrdemFilaApp: salvarOrdemFilaApp,
     regredirEtapa: regredirEtapa,
     devolverProcessoFilaApp: devolverProcessoFilaApp,
     concluirEtapa: concluirEtapa,
@@ -837,6 +838,7 @@ function _apiCallAppSEL_(method, args) {
     instalarTriggerAvisos: instalarTriggerAvisos,
     enviarEmailTesteServidor: enviarEmailTesteServidor,
     enviarAvisosPrazoApp: enviarAvisosPrazoApp,
+    getAlertasApp: getAlertasApp,
     cadastrarProcesso: cadastrarProcesso,
     salvarOutrosCap: salvarOutrosCap,
     salvarPontuacaoCap: salvarPontuacaoCap,
@@ -1098,15 +1100,21 @@ function _getEtapasParaApp_(sess) {
     irp:   hP.indexOf('Tem IRP?'),
     req:   hP.indexOf('Setor Requisitante'),
     suap:  hP.indexOf('Link SUAP'),
-    emailR: hP.indexOf('EmailRequisitante')
+    emailR: hP.indexOf('EmailRequisitante'),
+    ordem: hP.indexOf('OrdemFila')   // opcional: ordem manual da fila (chefia)
   };
 
   var procs = [];
   var filaPrevisao = []; // processos sem D0 (aguardando entrada na fila)
+  var ordemFilaMap = {}; // pid → número de ordem manual (quando coluna existe)
   for (var i = lP.hIdx + 1; i < lP.values.length; i++) {
     var r   = lP.values[i];
     var pid = String(r[iP.id] || '').trim();
     if (!pid) continue;
+    if (iP.ordem >= 0) {
+      var ordVal = parseFloat(r[iP.ordem]);
+      if (!isNaN(ordVal)) ordemFilaMap[pid] = ordVal;
+    }
     var d0 = _parseDate_(r[iP.d0]);
     if (!d0) {
       filaPrevisao.push({
@@ -1318,10 +1326,39 @@ function _getEtapasParaApp_(sess) {
     });
     fp.servidor    = servMap[fp.id] ? (servMap[fp.id].int || '') : '';
     fp.servidorExt = servMap[fp.id] ? (servMap[fp.id].ext || '') : '';
+    fp.ordemFila   = ordemFilaMap.hasOwnProperty(fp.id) ? ordemFilaMap[fp.id] : null;
     return fp;
   });
 
-  return { processos: resultado, filaPrevisao: sess.isChefe ? filaPrevisao : [], calendario: _calendarioPayload_() };
+  // Anexa a ordem manual também aos processos (retornados/planejamento entram na fila)
+  resultado.forEach(function(p) {
+    p.ordemFila = ordemFilaMap.hasOwnProperty(p.id) ? ordemFilaMap[p.id] : null;
+  });
+
+  // Ordena a fila de previsão pela ordem manual quando definida (nulos ao fim, ordem estável)
+  filaPrevisao = _ordenarPorFila_(filaPrevisao);
+
+  return {
+    processos: resultado,
+    filaPrevisao: sess.isChefe ? filaPrevisao : [],
+    ordemFilaDisponivel: iP.ordem >= 0,
+    calendario: _calendarioPayload_()
+  };
+}
+
+// Ordena uma lista de processos pela ordem manual da fila (campo ordemFila).
+// Itens com ordem definida vêm primeiro (crescente); os sem ordem mantêm a
+// posição relativa original ao fim. Estável.
+function _ordenarPorFila_(lista) {
+  return lista
+    .map(function(item, idx) { return { item: item, idx: idx }; })
+    .sort(function(a, b) {
+      var oa = (a.item.ordemFila === null || a.item.ordemFila === undefined) ? Infinity : a.item.ordemFila;
+      var ob = (b.item.ordemFila === null || b.item.ordemFila === undefined) ? Infinity : b.item.ordemFila;
+      if (oa !== ob) return oa - ob;
+      return a.idx - b.idx;
+    })
+    .map(function(w) { return w.item; });
 }
 
 // ── iniciarProcessos ──────────────────────────────────────────────────────
@@ -1978,6 +2015,65 @@ function enviarAvisosPrazoVencidos() {
 function enviarAvisosPrazoApp(authToken) {
   _authRequire_(authToken, true);
   return enviarAvisosPrazo();
+}
+
+// ── Central de notificações (App) ─────────────────────────────────────────
+// Reusa EXATAMENTE a mesma varredura de enviarAvisosPrazo (etapas próximas e
+// vencidas), mas em vez de enviar e-mail, RETORNA a lista para o app exibir
+// no sininho. Garante paridade com os e-mails sem duplicar a regra de prazo.
+function _coletarAvisosPrazo_(dados, hoje) {
+  function _parado_(status) {
+    status = String(status || '').toLowerCase();
+    return status === 'paralisado' || status === 'suspenso';
+  }
+  var proximos = [];
+  var vencidos = [];
+  (dados || []).forEach(function(p) {
+    if (p.status === 'ok' || p.status === 'planejamento' || p.retornoFila || _parado_(p.status)) return;
+    (p.etapas || []).forEach(function(et) {
+      if (et.status === 'ok' || et.status === 'na' || et.retornoFila || _parado_(et.status) || !et.fim_iso) return;
+      var fim  = new Date(et.fim_iso + 'T00:00:00');
+      var diff = _contDU_(hoje, fim); // positivo = dias até vencer; negativo = já venceu
+      var aguardaReq = p.status === 'aguardando' || et.status === 'aguardando';
+      var item = {
+        processoId: p.id,
+        num:        p.num || '',
+        nome:       p.nome || '',
+        modal:      p.modal || '',
+        etapa:      et.nome || '',
+        fimIso:     et.fim_iso,
+        retornoFila: !!p.retornoFila,
+        aguardandoReq: aguardaReq
+      };
+      if (diff >= 0 && diff <= DIAS_AVISO) {
+        item.dias = diff;
+        proximos.push(item);
+      } else if (diff < 0) {
+        item.diasAtraso = -diff;
+        vencidos.push(item);
+      }
+    });
+  });
+  // Ordena: vencidos por maior atraso; próximos por menor prazo (mais urgente primeiro)
+  vencidos.sort(function(a, b) { return b.diasAtraso - a.diasAtraso; });
+  proximos.sort(function(a, b) { return a.dias - b.dias; });
+  return { proximos: proximos, vencidos: vencidos };
+}
+
+function getAlertasApp(authToken) {
+  var sess = _authRequire_(authToken, false);
+  var dadosRaw = _getEtapasParaApp_(sess);
+  var dados = (dadosRaw && dadosRaw.processos) ? dadosRaw.processos : (dadosRaw || []);
+  var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  var col = _coletarAvisosPrazo_(dados, hoje);
+  return {
+    ok: true,
+    proximos: col.proximos,
+    vencidos: col.vencidos,
+    totalProximos: col.proximos.length,
+    totalVencidos: col.vencidos.length,
+    diasAviso: DIAS_AVISO
+  };
 }
 
 // ── cadastrarProcesso ─────────────────────────────────────────────────────
@@ -2802,6 +2898,56 @@ function salvarNomeProcessoFilaApp(params) {
         return { ok: true, nome: nome };
       }
       throw new Error('Processo ' + pid + ' não encontrado.');
+    } catch(e) { return { ok: false, erro: e.message }; }
+  });
+}
+
+// Persiste a ordem manual da fila (drag-and-drop). Só chefia.
+// params: { ordem: [pid1, pid2, ...] (ordem desejada), authToken }
+// Grava 1,2,3,... na coluna 'OrdemFila' da aba Processos. Se a coluna não
+// existir, retorna aviso pedindo que a chefia a crie (sem quebrar nada).
+function salvarOrdemFilaApp(params) {
+  return _withAppLockResult_('salvar ordem da fila', function() {
+    try {
+      params = params || {};
+      _authRequire_(params.authToken, true);
+      var ordem = params.ordem;
+      if (!ordem || !ordem.length || Object.prototype.toString.call(ordem) !== '[object Array]') {
+        throw new Error('Ordem da fila não informada.');
+      }
+
+      var shP = _ss_().getSheetByName(ABA_PROC);
+      if (!shP) throw new Error('Aba Processos não encontrada.');
+      var lP = _lerAba_(shP, 'ProcessoID');
+      var hP = lP.header;
+      var iId = hP.indexOf('ProcessoID');
+      var iOrd = hP.indexOf('OrdemFila');
+      if (iId < 0) throw new Error('Coluna ProcessoID não encontrada.');
+      if (iOrd < 0) {
+        return { ok: false, semColuna: true,
+          erro: 'A coluna "OrdemFila" não existe na aba Processos. Crie-a (cabeçalho exatamente "OrdemFila") para salvar a ordem da fila.' };
+      }
+
+      // Mapa pid → posição desejada (1-based)
+      var posPorId = {};
+      ordem.forEach(function(pid, idx) {
+        pid = String(pid || '').trim();
+        if (pid) posPorId[pid] = idx + 1;
+      });
+
+      // Grava célula a célula apenas nas linhas que mudam (preserva o resto)
+      var gravados = 0;
+      for (var i = lP.hIdx + 1; i < lP.values.length; i++) {
+        var pid = String(lP.values[i][iId] || '').trim();
+        if (!pid || !posPorId.hasOwnProperty(pid)) continue;
+        var novo = posPorId[pid];
+        var atual = parseFloat(lP.values[i][iOrd]);
+        if (atual !== novo) {
+          shP.getRange(i + 1, iOrd + 1).setValue(novo);
+          gravados++;
+        }
+      }
+      return { ok: true, gravados: gravados, total: ordem.length };
     } catch(e) { return { ok: false, erro: e.message }; }
   });
 }
