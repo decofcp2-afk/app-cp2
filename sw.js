@@ -1,4 +1,4 @@
-var CACHE_NAME = 'app-gestao-reitoria-v2';
+var CACHE_NAME = 'app-gestao-reitoria-v3';
 
 var CORE_ASSETS = [
   './',
@@ -51,29 +51,6 @@ self.addEventListener('fetch', function(event) {
   if (url.origin === self.location.origin) {
     event.respondWith(cacheFirst(event.request));
   }
-});
-
-self.addEventListener('notificationclick', function(event) {
-  event.notification.close();
-
-  var targetUrl = './index.html';
-  if (event.notification.data && event.notification.data.url) {
-    targetUrl = event.notification.data.url;
-  }
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then(function(clientList) {
-        for (var i = 0; i < clientList.length; i++) {
-          var client = clientList[i];
-          if (client.url && client.url.indexOf(self.location.origin) === 0) {
-            if ('navigate' in client) client.navigate(targetUrl);
-            return client.focus();
-          }
-        }
-        if (clients.openWindow) return clients.openWindow(targetUrl);
-      })
-  );
 });
 
 function networkFirst(request) {

@@ -205,7 +205,6 @@ var ABA_PROC = '🏛 Processos';
 var ABA_ETP  = '🗓 Etapas';
 var ABA_HIST = '__historico_motivos'; // aba oculta, append-only
 var ABA_CAL  = 'Calendario';
-var ABA_PWA  = '__pwa_dispositivos';
 
 // ── Feriados nacionais fixos (MM-DD) ─────────────────────────────────────
 var _FERIADOS = ['01-01','04-21','05-01','09-07','10-12','11-02','11-15','11-20','12-25'];
@@ -840,7 +839,6 @@ function _apiCallAppSEL_(method, args) {
     enviarEmailTesteServidor: enviarEmailTesteServidor,
     enviarAvisosPrazoApp: enviarAvisosPrazoApp,
     getAlertasApp: getAlertasApp,
-    registrarDispositivoPwaApp: registrarDispositivoPwaApp,
     cadastrarProcesso: cadastrarProcesso,
     salvarOutrosCap: salvarOutrosCap,
     salvarPontuacaoCap: salvarPontuacaoCap,
@@ -1833,21 +1831,18 @@ function enviarAvisosPrazo(modo) {
       || n.indexOf('setor') >= 0;
   }
 
-  function statusParado_(status) {
-    status = String(status || '').toLowerCase();
-    return status === 'paralisado' || status === 'suspenso';
-  }
-
   // Classifica os avisos
   var avisosProximos = [];
   var avisosVencidos = [];
 
   dados.forEach(function(p) {
-    // Pula concluídos, processos ainda não iniciados, suspensos/paralisados e devolvidos para a fila.
-    if (p.status === 'ok' || p.status === 'planejamento' || p.retornoFila || statusParado_(p.status)) return;
+    // Pula apenas concluídos, processos ainda não iniciados e devolvidos para a fila.
+    // Status como "em andamento", "aguardando" ou "paralisado" continuam avisando
+    // até a etapa ser efetivamente concluída.
+    if (p.status === 'ok' || p.status === 'planejamento' || p.retornoFila) return;
 
     p.etapas.forEach(function(et) {
-      if (et.status === 'ok' || et.status === 'na' || et.retornoFila || statusParado_(et.status) || !et.fim_iso) return;
+      if (et.status === 'ok' || et.status === 'na' || et.retornoFila || !et.fim_iso) return;
       var fim  = new Date(et.fim_iso + 'T00:00:00');
       var diff = _contDU_(hoje, fim); // positivo = dias até vencer; negativo = já venceu
       var aguardaReq = p.status === 'aguardando' || et.status === 'aguardando';
@@ -1972,8 +1967,8 @@ function enviarAvisosPrazo(modo) {
     var procRefTexto = processoRefTexto_(p);
     var prefixoAssunto = tipo === 'vencido' ? '⚠️ Etapas vencidas' : '⏰ Prazos próximos';
 
-    // Etapas "aguardando requisitante" são cobradas SÓ do setor requisitante —
-    // não geram e-mail para os servidores de licitações nem para a chefia.
+    // Etapas "aguardando requisitante" nao geram e-mail para servidores comuns;
+    // seguem para chefia e requisitante.
     var avisosSEL = avisos.filter(function(a){ return !a.aguardandoReq; });
 
     // 1. E-mail para cada SERVIDOR responsável — só com as etapas dele (exclui chefia).
@@ -1993,11 +1988,12 @@ function enviarAvisosPrazo(modo) {
       if (enviar_(grp.email, prefixoAssunto + ': ' + procRefTexto + ' (' + grp.avisos.length + ' etapa' + (grp.avisos.length>1?'s':'') + ')', body)) enviados++;
     });
 
-    // 2. E-mail para a chefia — com as etapas que dependem do SEL (sem as aguardando-req).
-    if (chefiaEmails.length && avisosSEL.length) {
-      var nSel = avisosSEL.length;
-      var bodyChef = corpoProcesso_(p, avisosSEL, tipo);
-      var assuntoChef = prefixoAssunto + ': ' + procRefTexto + ' (' + nSel + ' etapa' + (nSel>1?'s':'') + ')';
+    // 2. E-mail para a chefia — inclui também as etapas aguardando requisitante,
+    // para a chefia poder acompanhar e cobrar o setor requisitante quando couber.
+    if (chefiaEmails.length && avisos.length) {
+      var nChef = avisos.length;
+      var bodyChef = corpoProcesso_(p, avisos, tipo);
+      var assuntoChef = prefixoAssunto + ': ' + procRefTexto + ' (' + nChef + ' etapa' + (nChef>1?'s':'') + ')';
       chefiaEmails.forEach(function(emailChef) {
         if (enviar_(emailChef, assuntoChef, bodyChef)) enviados++;
       });
@@ -2052,11 +2048,7 @@ function enviarAvisosPrazoApp(authToken) {
 // filtroServidor: quando informado (perfil comum), só inclui etapas cujo
 // responsável é esse servidor — mesmo critério do e-mail (externo na fase
 // externa, senão interno; fallback ao Agente da etapa). Chefe passa '' (vê tudo).
-function _coletarAvisosPrazo_(dados, hoje, filtroServidor) {
-  function _parado_(status) {
-    status = String(status || '').toLowerCase();
-    return status === 'paralisado' || status === 'suspenso';
-  }
+function _coletarAvisosPrazo_(dados, hoje, filtroServidor, incluirAguardandoReq) {
   function _normNome_(s) {
     return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   }
@@ -2070,14 +2062,15 @@ function _coletarAvisosPrazo_(dados, hoje, filtroServidor) {
   var proximos = [];
   var vencidos = [];
   (dados || []).forEach(function(p) {
-    if (p.status === 'ok' || p.status === 'planejamento' || p.retornoFila || _parado_(p.status)) return;
+    if (p.status === 'ok' || p.status === 'planejamento' || p.retornoFila) return;
     (p.etapas || []).forEach(function(et) {
-      if (et.status === 'ok' || et.status === 'na' || et.retornoFila || _parado_(et.status) || !et.fim_iso) return;
+      if (et.status === 'ok' || et.status === 'na' || et.retornoFila || !et.fim_iso) return;
+      var aguardaReq = p.status === 'aguardando' || et.status === 'aguardando';
+      if (aguardaReq && !incluirAguardandoReq) return;
       // Filtro por responsável (perfil comum)
       if (alvo && _normNome_(_respDaEtapa_(p, et)) !== alvo) return;
       var fim  = new Date(et.fim_iso + 'T00:00:00');
       var diff = _contDU_(hoje, fim); // positivo = dias até vencer; negativo = já venceu
-      var aguardaReq = p.status === 'aguardando' || et.status === 'aguardando';
       var item = {
         processoId: p.id,
         num:        p.num || '',
@@ -2108,12 +2101,11 @@ function getAlertasApp(authToken) {
   var dadosRaw = _getEtapasParaApp_(sess);
   var dados = (dadosRaw && dadosRaw.processos) ? dadosRaw.processos : (dadosRaw || []);
   var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  // Chefe vê todos os alertas; servidor comum vê só os processos onde é responsável.
   var filtroServidor = sess.isChefe ? '' : (sess.nome || '');
-  var col = _coletarAvisosPrazo_(dados, hoje, filtroServidor);
+  var col = _coletarAvisosPrazo_(dados, hoje, filtroServidor, !!sess.isChefe);
   return {
     ok: true,
-    escopo: sess.isChefe ? 'todos' : 'meus',
+    escopo: sess.isChefe ? 'chefia' : 'meus',
     proximos: col.proximos,
     vencidos: col.vencidos,
     totalProximos: col.proximos.length,
@@ -3287,170 +3279,6 @@ function salvarPontuacaoCap(params) {
 // Retorna a lista de servidores do setor como array de objetos:
 //   [{nome, cor, isChefe, email}]
 // Lê de PropertiesService (chave SEL_SERVIDORES_JSON). Se não existir, usa padrão.
-// ── PWA: avisos do aparelho ────────────────────────────────────────────
-// Registra quando um usuario ativa/nega avisos do aparelho no PWA instalado.
-// Esta etapa registra permissao local e envia aviso por e-mail a chefia;
-// push remoto de prazo depende de um emissor Web Push/VAPID separado.
-function _pwaSheet_() {
-  var ss = _ss_();
-  var sh = ss.getSheetByName(ABA_PWA);
-  var headers = [
-    'PrimeiroRegistro',
-    'UltimoRegistro',
-    'Servidor',
-    'Matricula',
-    'Chefe',
-    'DeviceId',
-    'Plataforma',
-    'DisplayMode',
-    'Instalado',
-    'Permissao',
-    'SuportaPush',
-    'Origem',
-    'UserAgent',
-    'Versao'
-  ];
-  if (!sh) {
-    sh = ss.insertSheet(ABA_PWA);
-    sh.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sh.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#E8F0FE');
-    try { sh.hideSheet(); } catch(e) {}
-  }
-  return sh;
-}
-
-function _pwaClean_(valor, max) {
-  return String(valor === undefined || valor === null ? '' : valor).trim().substring(0, max || 300);
-}
-
-function _pwaBool_(valor) {
-  return valor === true || String(valor || '').toLowerCase() === 'true';
-}
-
-function _pwaPermissao_(valor) {
-  var p = _pwaClean_(valor, 30).toLowerCase();
-  return ['granted', 'denied', 'default', 'unsupported'].indexOf(p) >= 0 ? p : 'default';
-}
-
-function _pwaHtmlEsc_(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function _pwaEmailValido_(email) {
-  email = String(email || '').trim();
-  return email && email.indexOf('@') > 0 && email.indexOf('COLE') !== 0;
-}
-
-function _pwaEmailsChefia_() {
-  var out = [];
-  var emailsConfig = _getEmails_({ isChefe: true, nome: 'Sistema' });
-  _getServidoresApp_().forEach(function(s) {
-    if (!s.isChefe) return;
-    var email = emailsConfig[s.nome] || _emailServidorFallback_(s.nome) || '';
-    if (_pwaEmailValido_(email) && out.indexOf(email) < 0) out.push(email);
-  });
-  var fallback = _chefiaEmailFallback_();
-  if (_pwaEmailValido_(fallback) && out.indexOf(fallback) < 0) out.push(fallback);
-  return out;
-}
-
-function _pwaNotificarChefias_(sess, params) {
-  var emails = _pwaEmailsChefia_();
-  if (!emails.length) return 0;
-  var tz = Session.getScriptTimeZone();
-  var quando = Utilities.formatDate(new Date(), tz, 'dd/MM/yyyy HH:mm');
-  var plataforma = _pwaClean_(params.plataforma, 80) || 'nao informada';
-  var displayMode = _pwaClean_(params.displayMode, 40) || 'browser';
-  var origem = _pwaClean_(params.origem, 40) || 'app';
-  var html = '<div style="font-family:Arial,sans-serif;max-width:560px;color:#1e293b;line-height:1.45;">'
-    + '<div style="background:#1a3a5c;color:#fff;padding:14px 18px;border-radius:8px 8px 0 0;">'
-    + '<h2 style="margin:0;font-size:16px;">Avisos no aparelho ativados</h2>'
-    + '<p style="margin:3px 0 0;font-size:12px;opacity:.85;">App Gestao de Etapas - SEL</p>'
-    + '</div>'
-    + '<div style="border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;padding:16px;">'
-    + '<p style="margin:0 0 12px;">O servidor <b>' + _pwaHtmlEsc_(sess.nome) + '</b> autorizou avisos do App Gestao neste aparelho.</p>'
-    + '<table style="width:100%;border-collapse:collapse;font-size:13px;">'
-    + '<tr><td style="padding:6px 0;color:#64748b;">Quando</td><td style="padding:6px 0;font-weight:700;">' + _pwaHtmlEsc_(quando) + ' (' + _pwaHtmlEsc_(tz) + ')</td></tr>'
-    + '<tr><td style="padding:6px 0;color:#64748b;">Plataforma</td><td style="padding:6px 0;">' + _pwaHtmlEsc_(plataforma) + '</td></tr>'
-    + '<tr><td style="padding:6px 0;color:#64748b;">Modo</td><td style="padding:6px 0;">' + _pwaHtmlEsc_(displayMode) + '</td></tr>'
-    + '<tr><td style="padding:6px 0;color:#64748b;">Origem</td><td style="padding:6px 0;">' + _pwaHtmlEsc_(origem) + '</td></tr>'
-    + '</table>'
-    + '<p style="margin:14px 0 0;color:#64748b;font-size:12px;">Este aviso confirma a permissao local do aparelho. Envio push remoto de prazos ainda depende de configuracao Web Push/VAPID.</p>'
-    + '</div></div>';
-  var enviados = 0;
-  emails.forEach(function(email) {
-    try {
-      MailApp.sendEmail(email, 'App Gestao - avisos no aparelho ativados', '', { htmlBody: html });
-      enviados++;
-    } catch(e) {}
-  });
-  return enviados;
-}
-
-function registrarDispositivoPwaApp(params) {
-  return _withAppLockResult_('registrar dispositivo PWA', function() {
-    try {
-      params = params || {};
-      var sess = _authRequire_(params.authToken, false);
-      var deviceId = _pwaClean_(params.deviceId, 120);
-      if (!deviceId) throw new Error('Dispositivo nao informado.');
-
-      var permissao = _pwaPermissao_(params.permissao);
-      var sh = _pwaSheet_();
-      var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function(c) { return String(c).trim(); });
-      var data = sh.getDataRange().getValues();
-      var iMat = headers.indexOf('Matricula');
-      var iDev = headers.indexOf('DeviceId');
-      var iPerm = headers.indexOf('Permissao');
-      var rowIdx = -1;
-      var permissaoAnterior = '';
-
-      for (var r = 1; r < data.length; r++) {
-        if (String(data[r][iMat] || '') === String(sess.matricula || '') &&
-            String(data[r][iDev] || '') === deviceId) {
-          rowIdx = r;
-          permissaoAnterior = String(data[r][iPerm] || '');
-          break;
-        }
-      }
-
-      var agora = new Date();
-      var primeiro = rowIdx >= 0 ? data[rowIdx][0] : agora;
-      var row = [
-        primeiro,
-        agora,
-        sess.nome || '',
-        sess.matricula || '',
-        sess.isChefe ? 'Sim' : 'Nao',
-        deviceId,
-        _pwaClean_(params.plataforma, 80),
-        _pwaClean_(params.displayMode, 40),
-        _pwaBool_(params.instalado) ? 'Sim' : 'Nao',
-        permissao,
-        _pwaBool_(params.suportePush) ? 'Sim' : 'Nao',
-        _pwaClean_(params.origem, 40),
-        _pwaClean_(params.userAgent, 500),
-        'pwa-local-notif-v1'
-      ];
-
-      if (rowIdx >= 0) {
-        sh.getRange(rowIdx + 1, 1, 1, row.length).setValues([row]);
-      } else {
-        sh.appendRow(row);
-      }
-
-      var emailChefias = 0;
-      if (permissao === 'granted' && permissaoAnterior !== 'granted') {
-        emailChefias = _pwaNotificarChefias_(sess, params);
-      }
-
-      return { ok: true, novo: rowIdx < 0, permissao: permissao, emailChefias: emailChefias };
-    } catch(e) {
-      return { ok: false, erro: e.message };
-    }
-  });
-}
-
 // ── getServidoresApp ───────────────────────────────────────────────────
 // Retorna a lista de servidores do setor como array de objetos:
 //   [{nome, cor, isChefe, email}]

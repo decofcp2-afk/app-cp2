@@ -83,10 +83,19 @@
     /* ── App shell ─────────────────────────────────────────────── */
     #app { position: fixed; inset: 0; display: flex; flex-direction: column; }
     .app-header { background: var(--navy); color: #fff; padding: calc(12px + env(safe-area-inset-top)) 16px 12px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-    .app-header-title { font-weight: 700; font-size: 16px; }
-    .app-header-sub { font-size: 11px; opacity: .65; margin-top: 1px; }
+    .app-header-title { font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .app-header-sub { font-size: 11px; opacity: .65; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .offline-banner { display: flex; align-items: center; gap: 8px; flex-shrink: 0; background: #fffbeb; border-bottom: 1px solid #fde68a; color: #92400e; padding: 8px 12px; font-size: 12px; line-height: 1.35; }
+    .offline-banner[hidden] { display: none; }
+    .offline-banner b { font-size: 12px; }
+    .offline-banner span:last-child { min-width: 0; }
+    @media (max-width: 420px) {
+      .app-header-title { font-size: 14px; }
+    }
     /* ── Central de notificações ──────────────────────────────────────── */
-    .notif-bell { position: relative; background: rgba(255,255,255,.15); border: none; color: #fff; width: 38px; height: 34px; border-radius: 20px; font-size: 17px; cursor: pointer; margin-right: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .notif-bell { position: relative; background: rgba(255,255,255,.15); border: none; color: #fff; width: 38px; height: 34px; border-radius: 20px; font-size: 17px; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .notif-bell[hidden] { display: none; }
     .notif-bell:active { background: rgba(255,255,255,.28); }
     .notif-badge { position: absolute; top: -3px; right: -3px; background: var(--red); color: #fff; border-radius: 10px; padding: 0 5px; font-size: 10px; font-weight: 800; min-width: 17px; height: 17px; line-height: 17px; text-align: center; box-shadow: 0 0 0 2px var(--navy); }
     .notif-ov { position: fixed; inset: 0; background: rgba(15,23,42,.35); z-index: 9000; }
@@ -434,19 +443,25 @@
         <div class="app-header-sub">Colégio Pedro II</div>
       </div>
     </div>
-    <button class="notif-bell" id="notif-bell" onclick="toggleNotif_()" aria-label="Central de notificações" title="Central de notificações">
-      🔔<span id="notif-badge" class="notif-badge" hidden>0</span>
-    </button>
-    <div class="user-chip" onclick="toggleHdrMenu_()">👤 <span id="hdr-nome"></span> ⋮
-      <div id="hdr-menu" class="hdr-menu" hidden onclick="event.stopPropagation()">
-        <button class="hdr-menu-item" id="hdr-config-item" onclick="switchTab('config');toggleHdrMenu_()">⚙️ Configurações</button>
-        <div class="hdr-menu-sep" id="hdr-config-sep"></div>
-        <button class="hdr-menu-item" id="hdr-pwa-notif-item" onclick="ativarNotificacoesPwa_();toggleHdrMenu_()">🔔 Ativar avisos no aparelho</button>
-        <div class="hdr-menu-sep" id="hdr-pwa-notif-sep"></div>
-        <button class="hdr-menu-item" onclick="confirmarTroca();toggleHdrMenu_()">🔄 Trocar usuário</button>
+    <div class="header-actions">
+      <button class="notif-bell" id="notif-bell" onclick="toggleNotif_()" aria-label="Central de notificações" title="Central de notificações">
+        🔔<span id="notif-badge" class="notif-badge" hidden>0</span>
+      </button>
+      <div class="user-chip" onclick="toggleHdrMenu_()">👤 <span id="hdr-nome"></span> ⋮
+        <div id="hdr-menu" class="hdr-menu" hidden onclick="event.stopPropagation()">
+          <button class="hdr-menu-item" onclick="confirmarTroca();toggleHdrMenu_()">🔄 Trocar usuário</button>
+          <div class="hdr-menu-sep"></div>
+          <button class="hdr-menu-item" onclick="abrirPainel_();toggleHdrMenu_()">📊 Painel de Contratações</button>
+          <div class="hdr-menu-sep" id="hdr-config-sep"></div>
+          <button class="hdr-menu-item" id="hdr-config-item" onclick="switchTab('config');toggleHdrMenu_()">⚙️ Configurações</button>
+        </div>
       </div>
     </div>
   </header>
+  <div id="offline-banner" class="offline-banner" hidden>
+    <b>Modo offline</b>
+    <span id="offline-msg">Consulta dos últimos dados salvos neste aparelho.</span>
+  </div>
   <div id="notif-ov" class="notif-ov" hidden onclick="fecharNotif_()"></div>
   <div id="notif-panel" class="notif-panel" hidden>
     <div class="notif-head">
@@ -876,6 +891,10 @@
 
   function invoke(method, args, success, failure) {
     args = Array.prototype.slice.call(args || []);
+    if (OFFLINE_MODE && metodoExigeOnline_(method)) {
+      (failure || function() {})(new Error('Modo offline: as alterações ficam bloqueadas até a conexão voltar.'));
+      return;
+    }
     if (method === 'loginApp') {
       loginSeguro(args[0], args[1], success, failure);
       return;
@@ -919,6 +938,7 @@ var DATA       = [];
 var FILA       = [];   // processos sem D0 (fila de prioridades)
 var CALENDARIO_FERIADOS = {};
 var CALENDARIO_MUNICIPIO = String((window.APPSEL_CONFIG && window.APPSEL_CONFIG.municipioCalendario) || 'Rio de Janeiro');
+var PAINEL_URL = String((window.APPSEL_CONFIG && window.APPSEL_CONFIG.painelUrl) || 'https://decofcp2-afk.github.io/painel-contratacoes-reitoria/').trim();
 var HIST       = [];
 var CAP_DATA   = null;
 var PROC_ATI   = null;
@@ -927,8 +947,9 @@ var STEP       = 0;
 var HIST_CARREGADO = false;
 var CAP_CARREGADO  = false;
 var TRIGGER_STATUS = null; // null=desconhecido, true=instalado, false=não instalado
-var PWA_NOTIF_PROMPT_ABERTO = false;
-var PWA_INSTALL_PROMPT = null;
+var OFFLINE_MODE = false;
+var OFFLINE_LAST_SYNC = '';
+var NOTIF_DIAS_AVISO = 3;
 
 // Filtros
 var F_MODAL = '';
@@ -949,6 +970,121 @@ var SL = {
   retornado:'Retornado para fila',
   pendente:'Não iniciada', na:'Não se aplica', planejamento:'A iniciar'
 };
+
+function metodoExigeOnline_(method) {
+  method = String(method || '');
+  if (!method || method === 'logoutApp') return false;
+  if (/^(get|verificar|validar)/.test(method)) return false;
+  return true;
+}
+
+function offlineCacheKeyFor_(nome) {
+  return 'appselOfflineCache:' + encodeURIComponent(String(nome || '').trim() || 'anon');
+}
+
+function offlineFmtTs_(iso) {
+  if (!iso) return '';
+  try {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+  } catch(e) {
+    return '';
+  }
+}
+
+function setOfflineMode_(ativo, detalhe) {
+  OFFLINE_MODE = !!ativo;
+  document.body.classList.toggle('offline-mode', OFFLINE_MODE);
+  var bar = document.getElementById('offline-banner');
+  var msg = document.getElementById('offline-msg');
+  if (!bar || !msg) return;
+  bar.hidden = !OFFLINE_MODE;
+  if (OFFLINE_MODE) {
+    var quando = offlineFmtTs_(OFFLINE_LAST_SYNC);
+    msg.textContent = detalhe || (quando
+      ? 'Consulta dos ultimos dados salvos neste aparelho em ' + quando + '.'
+      : 'Consulta dos ultimos dados salvos neste aparelho.');
+  }
+}
+
+function salvarCacheOffline_() {
+  if (!SERVIDOR) return;
+  if ((!DATA || !DATA.length) && (!FILA || !FILA.length)) return;
+  var snapshot = {
+    ts: new Date().toISOString(),
+    servidor: SERVIDOR,
+    servidores: SERV_DATA || [],
+    data: DATA || [],
+    fila: FILA || [],
+    calendario: { feriados: Object.keys(CALENDARIO_FERIADOS || {}), municipio: CALENDARIO_MUNICIPIO },
+    notificacoes: NOTIF || { prox: [], venc: [] },
+    diasAviso: NOTIF_DIAS_AVISO,
+    triggerStatus: TRIGGER_STATUS
+  };
+  OFFLINE_LAST_SYNC = snapshot.ts;
+  try {
+    localStorage.setItem(offlineCacheKeyFor_(SERVIDOR), JSON.stringify(snapshot));
+  } catch(e) {}
+}
+
+function carregarCacheOffline_(nome) {
+  try {
+    var raw = localStorage.getItem(offlineCacheKeyFor_(nome));
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) {
+    return null;
+  }
+}
+
+function aplicarCacheOffline_(cache, detalhe) {
+  if (!cache || !cache.servidor) return false;
+  SERVIDOR = cache.servidor;
+  OFFLINE_LAST_SYNC = cache.ts || '';
+  DATA = cache.data || [];
+  FILA = cache.fila || [];
+  NOTIF = cache.notificacoes || { prox: [], venc: [] };
+  NOTIF_DIAS_AVISO = cache.diasAviso || NOTIF_DIAS_AVISO || 3;
+  TRIGGER_STATUS = cache.triggerStatus === undefined ? null : cache.triggerStatus;
+  if (cache.calendario) aplicarCalendario_(cache.calendario);
+  if (cache.servidores && cache.servidores.length) {
+    localStorage.setItem('selServidores', JSON.stringify(cache.servidores));
+    aplicarServidores_(cache.servidores);
+    renderLoginButtons_(cache.servidores);
+  }
+  document.getElementById('tela-login').hidden = true;
+  document.getElementById('app').hidden = false;
+  document.getElementById('hdr-nome').textContent = SERVIDOR;
+  document.getElementById('cfg-nome').textContent = SERVIDOR;
+  aplicarFiltroInicialUsuario_();
+  renderPillsServ_();
+  aplicarPerfilUI_();
+  sincronizarNotificacoesLocais_(false);
+  aplicarFiltros();
+  atualizarBadgeNotif_();
+  setOfflineMode_(true, detalhe);
+  concluirBoot_();
+  return true;
+}
+
+function tentarModoOfflineComSessao_(sess, detalhe) {
+  var nome = (sess && sess.nome) || SERVIDOR;
+  if (!nome) return false;
+  var cache = carregarCacheOffline_(nome);
+  return aplicarCacheOffline_(cache, detalhe);
+}
+
+function atualizarEstadoConexao_() {
+  if (navigator.onLine === false) {
+    setOfflineMode_(true);
+    if ((!DATA.length && !FILA.length) && SERVIDOR) aplicarCacheOffline_(carregarCacheOffline_(SERVIDOR));
+    return;
+  }
+  if (OFFLINE_MODE) {
+    setOfflineMode_(false);
+    if (AUTH_TOKEN) carregarDados();
+  }
+}
 
 // ══════════════════════════════════════════════════════════════════════
 // SERVIDORES — carregamento dinâmico e gestão
@@ -1035,7 +1171,6 @@ function aplicarPerfilUI_() {
   var fab = document.getElementById('fab-novo');
   var tabEtapas = document.getElementById('tab-etapas');
   if (fab && tabEtapas) fab.hidden = !isChefe || tabEtapas.hidden;
-  atualizarMenuNotificacoesPwa_();
 }
 
 function aplicarFiltroInicialUsuario_() {
@@ -1291,6 +1426,7 @@ function concluirBoot_() {
 }
 
 function aplicarSessao_(sess) {
+  setOfflineMode_(false);
   AUTH_TOKEN = sess.token || AUTH_TOKEN;
   AUTH_EXP = sess.exp || AUTH_EXP || 0;
   SERVIDOR = sess.nome;
@@ -1313,7 +1449,6 @@ function aplicarSessao_(sess) {
   else {
     carregarDados();
     preCarregarCapacidade_();
-    agendarPromptNotificacoesPwa_('login');
   }
 }
 
@@ -1374,7 +1509,7 @@ function abrirTrocaSenhaObrigatoria_() {
       if (!nova || nova.length < 4) { toast('A senha precisa ter ao menos 4 caracteres.', 'err'); abrirTrocaSenhaObrigatoria_(); return; }
       google.script.run
         .withSuccessHandler(function(res) {
-          if (res && res.ok) { toast('Senha alterada.', 'ok'); carregarDados(); preCarregarCapacidade_(); agendarPromptNotificacoesPwa_('login'); }
+          if (res && res.ok) { toast('Senha alterada.', 'ok'); carregarDados(); preCarregarCapacidade_(); }
           else { toast('Erro: ' + (res && res.erro ? res.erro : 'Não foi possível trocar a senha.'), 'err'); abrirTrocaSenhaObrigatoria_(); }
         })
         .withFailureHandler(function(e){ toast('Erro: ' + (e.message || e), 'err'); abrirTrocaSenhaObrigatoria_(); })
@@ -1387,6 +1522,7 @@ function logout() {
   if (AUTH_TOKEN) {
     try { google.script.run.logoutApp(AUTH_TOKEN); } catch(e) {}
   }
+  setOfflineMode_(false);
   sessionStorage.removeItem('selSessao');
   localStorage.removeItem('selSessao');
   localStorage.removeItem('selServidor');
@@ -1408,6 +1544,13 @@ function logout() {
 
 function confirmarTroca() {
   dialogoConfirmar_('Trocar usuário', 'Deseja sair deste perfil e escolher outro servidor?', logout, 'Trocar');
+}
+
+function abrirPainel_() {
+  var url = PAINEL_URL || 'https://decofcp2-afk.github.io/painel-contratacoes-reitoria/';
+  var win = window.open(url, '_blank', 'noopener');
+  if (win) win.opener = null;
+  else window.location.href = url;
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1438,7 +1581,6 @@ function toggleHdrMenu_() {
   var m = document.getElementById('hdr-menu');
   m.hidden = !m.hidden;
   if (!m.hidden) {
-    atualizarMenuNotificacoesPwa_();
     // Fecha ao clicar fora
     setTimeout(function() {
       document.addEventListener('click', function _cl() {
@@ -1452,239 +1594,94 @@ function toggleHdrMenu_() {
 // ══════════════════════════════════════════════════════════════════════
 // CENTRAL DE NOTIFICAÇÕES
 // ══════════════════════════════════════════════════════════════════════
-function pwaDisplayMode_() {
-  try {
-    if (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) return 'fullscreen';
-    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return 'standalone';
-    if (window.matchMedia && window.matchMedia('(display-mode: minimal-ui)').matches) return 'minimal-ui';
-    if (window.navigator && window.navigator.standalone) return 'standalone-ios';
-  } catch(e) {}
-  return 'browser';
-}
-
-function pwaFoiInstalado_() {
-  return pwaDisplayMode_() !== 'browser' || localStorage.getItem('appselPwaInstalled') === '1';
-}
-
-function pwaSuportaNotificacoes_() {
-  return !!(window.isSecureContext && 'Notification' in window && 'serviceWorker' in navigator);
-}
-
-function pwaLocalKey_(sufixo) {
-  return 'appselPwa:' + encodeURIComponent(SERVIDOR || 'anon') + ':' + sufixo;
-}
-
-function pwaDeviceId_() {
-  var key = 'appselPwaDeviceId';
-  var id = localStorage.getItem(key);
-  if (id) return id;
-  if (window.crypto && crypto.randomUUID) {
-    id = crypto.randomUUID();
-  } else {
-    var arr = new Uint8Array(16);
-    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(arr);
-    else for (var i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
-    id = Array.prototype.map.call(arr, function(b) { return ('0' + b.toString(16)).slice(-2); }).join('');
-  }
-  localStorage.setItem(key, id);
-  return id;
-}
-
-function atualizarMenuNotificacoesPwa_() {
-  var btn = document.getElementById('hdr-pwa-notif-item');
-  if (!btn) return;
-  if (!pwaSuportaNotificacoes_()) {
-    btn.textContent = 'Avisos indisponiveis';
-  } else if (!pwaFoiInstalado_()) {
-    btn.textContent = 'Instalar app para avisos';
-  } else if (Notification.permission === 'granted') {
-    btn.textContent = 'Avisos do aparelho ativos';
-  } else if (Notification.permission === 'denied') {
-    btn.textContent = 'Avisos bloqueados';
-  } else {
-    btn.textContent = 'Ativar avisos no aparelho';
-  }
-}
-
-function registrarDispositivoPwa_(permissao, origem, silencioso) {
-  if (!AUTH_TOKEN) return;
-  var payload = {
-    authToken: AUTH_TOKEN,
-    deviceId: pwaDeviceId_(),
-    plataforma: (navigator.platform || ''),
-    userAgent: (navigator.userAgent || ''),
-    displayMode: pwaDisplayMode_(),
-    instalado: pwaFoiInstalado_(),
-    permissao: permissao || (pwaSuportaNotificacoes_() ? Notification.permission : 'unsupported'),
-    suportePush: !!(navigator.serviceWorker && window.PushManager),
-    origem: origem || 'app'
-  };
-  google.script.run
-    .withSuccessHandler(function(r) {
-      if (!silencioso && r && !r.ok) toast('Nao consegui registrar o aparelho: ' + (r.erro || 'falha no Apps Script'), 'err');
-    })
-    .withFailureHandler(function(e) {
-      if (!silencioso) toast('Nao consegui registrar o aparelho: ' + (e.message || e), 'err');
-    })
-    .registrarDispositivoPwaApp(payload);
-}
-
-function solicitarPermissaoNotificacaoPwa_() {
-  return new Promise(function(resolve) {
-    var resolvido = false;
-    function done(p) {
-      if (resolvido) return;
-      resolvido = true;
-      resolve(p || Notification.permission || 'default');
-    }
-    try {
-      var ret = Notification.requestPermission(done);
-      if (ret && typeof ret.then === 'function') ret.then(done).catch(function(){ done(Notification.permission || 'denied'); });
-    } catch(e) {
-      done('denied');
-    }
-  });
-}
-
-function mostrarNotificacaoTestePwa_() {
-  if (!pwaSuportaNotificacoes_() || Notification.permission !== 'granted') return Promise.resolve();
-  var url = location.origin + location.pathname;
-  var opts = {
-    body: 'Avisos do App Gestao estao ativos neste aparelho.',
-    icon: 'icons/icon-192.png',
-    badge: 'icons/icon-192.png',
-    tag: 'appsel-pwa-ativo',
-    renotify: false,
-    data: { url: url }
-  };
-  if (navigator.serviceWorker && navigator.serviceWorker.ready) {
-    return navigator.serviceWorker.ready
-      .then(function(reg) { return reg.showNotification('App Gestao', opts); })
-      .catch(function() { try { new Notification('App Gestao', opts); } catch(e) {} });
-  }
-  try { new Notification('App Gestao', opts); } catch(e) {}
-  return Promise.resolve();
-}
-
-function ativarNotificacoesPwa_(origem) {
-  origem = origem || 'botao';
-  if (!AUTH_TOKEN) { toast('Entre no App Gestao antes de ativar avisos.', 'err'); return; }
-  if (!pwaSuportaNotificacoes_()) {
-    toast('Este navegador nao oferece notificacoes para este app.', 'err');
-    registrarDispositivoPwa_('unsupported', origem, true);
-    return;
-  }
-  if (!pwaFoiInstalado_()) {
-    if (PWA_INSTALL_PROMPT) {
-      instalarPwaSePossivel_();
-      return;
-    }
-    toast('Abra pelo icone instalado para ativar avisos do aparelho.', 'err');
-    registrarDispositivoPwa_(Notification.permission || 'default', origem, true);
-    return;
-  }
-  if (Notification.permission === 'denied') {
-    registrarDispositivoPwa_('denied', origem, true);
-    atualizarMenuNotificacoesPwa_();
-    toast('Notificacoes bloqueadas nas configuracoes do aparelho.', 'err');
-    return;
-  }
-  if (Notification.permission === 'granted') {
-    localStorage.setItem(pwaLocalKey_('enabled'), '1');
-    registrarDispositivoPwa_('granted', origem, true);
-    atualizarMenuNotificacoesPwa_();
-    mostrarNotificacaoTestePwa_();
-    toast('Avisos do aparelho ativados.', 'ok');
-    return;
-  }
-
-  solicitarPermissaoNotificacaoPwa_().then(function(permissao) {
-    atualizarMenuNotificacoesPwa_();
-    registrarDispositivoPwa_(permissao, origem, permissao !== 'granted');
-    if (permissao === 'granted') {
-      localStorage.setItem(pwaLocalKey_('enabled'), '1');
-      mostrarNotificacaoTestePwa_();
-      toast('Avisos do aparelho ativados.', 'ok');
-    } else {
-      toast('Avisos do aparelho nao foram ativados.', 'err');
-    }
-  });
-}
-
-function instalarPwaSePossivel_() {
-  if (!PWA_INSTALL_PROMPT) {
-    toast('Use o menu do navegador para instalar o App Gestao.', 'err');
-    return;
-  }
-  var promptEvent = PWA_INSTALL_PROMPT;
-  PWA_INSTALL_PROMPT = null;
-  promptEvent.prompt();
-  promptEvent.userChoice.then(function(choice) {
-    if (choice && choice.outcome === 'accepted') {
-      localStorage.setItem('appselPwaInstalled', '1');
-      toast('App instalado. Ative os avisos em seguida.', 'ok');
-      agendarPromptNotificacoesPwa_('instalacao');
-    } else {
-      toast('Instalacao cancelada.', 'err');
-    }
-    atualizarMenuNotificacoesPwa_();
-  }).catch(function() {
-    atualizarMenuNotificacoesPwa_();
-  });
-}
-
-function agendarPromptNotificacoesPwa_(origem) {
-  atualizarMenuNotificacoesPwa_();
-  if (!AUTH_TOKEN || !SERVIDOR || !pwaSuportaNotificacoes_() || !pwaFoiInstalado_()) return;
-  if (Notification.permission === 'granted') {
-    registrarDispositivoPwa_('granted', origem || 'sessao', true);
-    return;
-  }
-  if (Notification.permission !== 'default') return;
-  var key = pwaLocalKey_('prompted');
-  if (PWA_NOTIF_PROMPT_ABERTO || localStorage.getItem(key) === '1') return;
-  PWA_NOTIF_PROMPT_ABERTO = true;
-  setTimeout(function() {
-    if (!AUTH_TOKEN || Notification.permission !== 'default') { PWA_NOTIF_PROMPT_ABERTO = false; return; }
-    abrirDialogo_({
-      titulo: 'Ativar avisos',
-      mensagem: 'Deseja permitir avisos do App Gestao neste aparelho?',
-      ok: 'Ativar',
-      cancelar: 'Agora nao'
-    }, function(ok) {
-      PWA_NOTIF_PROMPT_ABERTO = false;
-      localStorage.setItem(key, '1');
-      if (ok) ativarNotificacoesPwa_(origem || 'prompt');
-      else atualizarMenuNotificacoesPwa_();
-    });
-  }, 900);
-}
-
-window.addEventListener('appinstalled', function() {
-  localStorage.setItem('appselPwaInstalled', '1');
-  PWA_INSTALL_PROMPT = null;
-  agendarPromptNotificacoesPwa_('instalacao');
-});
-
-window.addEventListener('beforeinstallprompt', function(event) {
-  event.preventDefault();
-  PWA_INSTALL_PROMPT = event;
-  atualizarMenuNotificacoesPwa_();
-});
-
 var NOTIF = { prox: [], venc: [] };
 var NOTIF_CAT = 'venc'; // categoria ativa: 'venc' | 'prox'
 var NOTIF_PILHA_ABERTA = {}; // chave "cat:processoId" → true quando a pilha está expandida
 
+function _normNomeNotif_(s) {
+  return String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function _respNotifEtapa_(p, et) {
+  var faseExt = String(et.fase || '').toLowerCase().indexOf('ext') >= 0;
+  var resp = faseExt ? (p.servidorExt || p.servidor || '') : (p.servidor || p.servidorExt || '');
+  return resp || et.agente || '';
+}
+
+function _coletarNotificacoesLocais_() {
+  var isChefe = isChefeAtual_();
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var alvo = isChefe ? '' : _normNomeNotif_(SERVIDOR);
+  var proximos = [];
+  var vencidos = [];
+
+  (DATA || []).forEach(function(p) {
+    if (!p || p.status === 'ok' || p.status === 'planejamento' || p.retornoFila) return;
+    (p.etapas || []).forEach(function(et) {
+      if (!et || et.status === 'ok' || et.status === 'na' || et.retornoFila || !et.fim_iso) return;
+      var aguardaReq = p.status === 'aguardando' || et.status === 'aguardando';
+      if (aguardaReq && !isChefe) return;
+      if (alvo && _normNomeNotif_(_respNotifEtapa_(p, et)) !== alvo) return;
+
+      var fim = new Date(et.fim_iso + 'T00:00:00');
+      var diff = _contDU_br_(hoje, fim);
+      var item = {
+        processoId: p.id,
+        num: p.num || '',
+        nome: p.nome || '',
+        modal: p.modal || '',
+        etapa: et.nome || '',
+        fimIso: et.fim_iso,
+        retornoFila: !!p.retornoFila,
+        aguardandoReq: aguardaReq
+      };
+      if (diff >= 0 && diff <= NOTIF_DIAS_AVISO) {
+        item.dias = diff;
+        proximos.push(item);
+      } else if (diff < 0) {
+        item.diasAtraso = -diff;
+        vencidos.push(item);
+      }
+    });
+  });
+
+  vencidos.sort(function(a, b) { return b.diasAtraso - a.diasAtraso; });
+  proximos.sort(function(a, b) { return a.dias - b.dias; });
+  return { prox: proximos, venc: vencidos };
+}
+
+function sincronizarNotificacoesLocais_(salvar) {
+  if (!DATA || !DATA.length) {
+    atualizarBadgeNotif_();
+    return;
+  }
+  NOTIF = _coletarNotificacoesLocais_();
+  atualizarBadgeNotif_();
+  var panel = document.getElementById('notif-panel');
+  if (panel && !panel.hidden) renderNotif_();
+  if (salvar !== false) salvarCacheOffline_();
+}
+
+function refrescarAposMudancaEtapa_() {
+  sincronizarNotificacoesLocais_();
+  if (!OFFLINE_MODE) carregarNotificacoes_();
+}
+
 function carregarNotificacoes_() {
+  if (OFFLINE_MODE) {
+    sincronizarNotificacoesLocais_(false);
+    return;
+  }
   google.script.run
     .withSuccessHandler(function(r) {
       if (!r || !r.ok) return;
       NOTIF.venc = r.vencidos || [];
       NOTIF.prox = r.proximos || [];
+      NOTIF_DIAS_AVISO = r.diasAviso || NOTIF_DIAS_AVISO || 3;
       atualizarBadgeNotif_();
       var panel = document.getElementById('notif-panel');
       if (panel && !panel.hidden) renderNotif_();
+      salvarCacheOffline_();
     })
     .withFailureHandler(function() { /* silencioso — central é auxiliar */ })
     .getAlertasApp(AUTH_TOKEN);
@@ -1862,6 +1859,13 @@ function abrirNotifItem_(pid) {
 // CARREGAR DADOS
 // ══════════════════════════════════════════════════════════════════════
 function carregarDados() {
+  if (OFFLINE_MODE || navigator.onLine === false) {
+    if (tentarModoOfflineComSessao_({ nome: SERVIDOR }, 'Sem conexão. Consulta dos últimos dados salvos neste aparelho.')) return;
+    document.getElementById('tab-etapas').innerHTML =
+      '<div class="empty"><div class="ei">⚠️</div><p>Sem conexão e sem dados salvos neste aparelho.</p></div>';
+    setOfflineMode_(true, 'Sem conexão e sem dados salvos neste aparelho.');
+    return;
+  }
   renderSkeleton();
   // Verifica trigger em paralelo (resultado usado no banner)
   google.script.run
@@ -1875,12 +1879,15 @@ function carregarDados() {
     .verificarTriggerAvisos(AUTH_TOKEN);
   google.script.run
     .withSuccessHandler(function(d) {
+      setOfflineMode_(false);
       if (d && d.calendario) aplicarCalendario_(d.calendario);
       if (d && d.processos) { DATA = d.processos; FILA = d.filaPrevisao || []; }
       else { DATA = d || []; FILA = []; }
+      sincronizarNotificacoesLocais_();
       aplicarFiltros();
     })
     .withFailureHandler(function(e) {
+      if (tentarModoOfflineComSessao_({ nome: SERVIDOR }, 'Nao foi possivel atualizar agora. Consulta dos ultimos dados salvos neste aparelho.')) return;
       document.getElementById('tab-etapas').innerHTML =
         '<div class="empty"><div class="ei">⚠️</div><p>Erro ao carregar:<br>' + esc(e.message||e) + '</p></div>';
     })
@@ -2445,6 +2452,7 @@ function confirmarStatusEtapa(novoStatus) {
       if (res.ok) {
         et.status = novoStatus;
         toast('✓ Status atualizado!', 'ok');
+        refrescarAposMudancaEtapa_();
         // Re-abre o modal do processo para refletir a mudança
         var idx = DATA.indexOf(PROC_ATI);
         if (idx >= 0) abrirProcesso(idx);
@@ -2775,6 +2783,8 @@ function confirmarConclusao() {
   google.script.run
     .withSuccessHandler(function(res) {
       if (res && res.ok) {
+        CONC.et.status = 'ok';
+        refrescarAposMudancaEtapa_();
         fecharConc();
         fecharProc();
         if (res.transicaoFase) {
@@ -4121,7 +4131,9 @@ function editarEmail_(btn) {
             if (res && res.ok) aplicarSessao_(res);
             else logout();
           })
-          .withFailureHandler(function(){ logout(); })
+          .withFailureHandler(function(){
+            if (!tentarModoOfflineComSessao_(sess, 'Sem conexao. Consulta dos ultimos dados salvos neste aparelho.')) logout();
+          })
           .validarSessaoApp(AUTH_TOKEN);
       }
     } catch(e) {}
@@ -4131,6 +4143,10 @@ function editarEmail_(btn) {
     concluirBoot_();
   }
 })();
+
+window.addEventListener('online', atualizarEstadoConexao_);
+window.addEventListener('offline', atualizarEstadoConexao_);
+setTimeout(atualizarEstadoConexao_, 300);
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {

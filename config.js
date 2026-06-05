@@ -8,5 +8,8 @@ window.APPSEL_CONFIG = {
   municipioCalendario: "Rio de Janeiro",
 
   // Tempo maximo de espera das chamadas ao Apps Script.
-  apiTimeoutMs: 90000
+  apiTimeoutMs: 90000,
+
+  // Link rapido para o Painel publico de Contratacoes.
+  painelUrl: "https://decofcp2-afk.github.io/painel-contratacoes-reitoria/"
 };
