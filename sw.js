@@ -1,4 +1,4 @@
-var CACHE_NAME = 'app-gestao-reitoria-v3';
+var CACHE_NAME = 'app-gestao-reitoria-v4';
 
 var CORE_ASSETS = [
   './',
@@ -6,6 +6,7 @@ var CORE_ASSETS = [
   './config.js',
   './manifest.json',
   './icon.svg',
+  './painel-icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];

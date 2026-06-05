@@ -139,6 +139,7 @@
     .user-chip { background: rgba(255,255,255,.15); border-radius: 20px; padding: 5px 11px; font-size: 12px; cursor: pointer; white-space: nowrap; position: relative; }
     .hdr-menu { position: absolute; top: calc(100% + 8px); right: 0; background: var(--card); border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.18); min-width: 220px; z-index: 500; overflow: hidden; }
     .hdr-menu-item { display: flex; align-items: center; gap: 10px; padding: 12px 16px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text); border: none; background: none; width: 100%; text-align: left; }
+    .hdr-menu-icon { width: 18px; height: 18px; border-radius: 4px; flex-shrink: 0; }
     .hdr-menu-item:active { background: var(--bg); }
     .hdr-menu-sep { height: 1px; background: var(--border); margin: 0; }
     /* ── Fila de prioridades ───────────────────────────────────────── */
@@ -451,7 +452,7 @@
         <div id="hdr-menu" class="hdr-menu" hidden onclick="event.stopPropagation()">
           <button class="hdr-menu-item" onclick="confirmarTroca();toggleHdrMenu_()">🔄 Trocar usuário</button>
           <div class="hdr-menu-sep"></div>
-          <button class="hdr-menu-item" onclick="abrirPainel_();toggleHdrMenu_()">📊 Painel de Contratações</button>
+          <button type="button" class="hdr-menu-item" onclick="abrirPainel_(event);toggleHdrMenu_();return false;"><img src="painel-icon.svg" alt="" class="hdr-menu-icon">Painel de Contratações</button>
           <div class="hdr-menu-sep" id="hdr-config-sep"></div>
           <button class="hdr-menu-item" id="hdr-config-item" onclick="switchTab('config');toggleHdrMenu_()">⚙️ Configurações</button>
         </div>
@@ -1546,11 +1547,15 @@ function confirmarTroca() {
   dialogoConfirmar_('Trocar usuário', 'Deseja sair deste perfil e escolher outro servidor?', logout, 'Trocar');
 }
 
-function abrirPainel_() {
+function abrirPainel_(ev) {
+  if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
   var url = PAINEL_URL || 'https://decofcp2-afk.github.io/painel-contratacoes-reitoria/';
-  var win = window.open(url, '_blank', 'noopener');
-  if (win) win.opener = null;
-  else window.location.href = url;
+  var win = window.open(url, '_blank');
+  if (win) {
+    try { win.opener = null; } catch (err) {}
+    try { win.focus(); } catch (err2) {}
+  }
+  return false;
 }
 
 // ══════════════════════════════════════════════════════════════════════
