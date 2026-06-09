@@ -60,6 +60,12 @@ function _chefiaEmailFallback_() {
   return _configProp_('SEL_CHEFIA_EMAIL', CHEFIA_EMAIL);
 }
 
+// URL pública do Painel de Contratações (GitHub Pages), usada nos e-mails ao
+// setor requisitante. Pode ser sobrescrita via propriedade SEL_PAINEL_URL.
+function _painelUrl_() {
+  return _configProp_('SEL_PAINEL_URL', 'https://decofcp2-afk.github.io/painel-contratacoes-reitoria/');
+}
+
 function _withAppLock_(acao, fn) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) {
@@ -1273,7 +1279,13 @@ function _getEtapasParaApp_(sess) {
 
   // ── Cascata de datas + montagem do resultado ───────────────────────────
   var resultado = procs.map(function(p) {
-    var etapas = etpPorProc[p.id] || [];
+    // Etapas 'na' (Não se aplica — ex.: IRP sem SRP — e etapas contratuais,
+    // forçadas a 'na' acima) ficam FORA do app: não são atribuição do SEL.
+    // Filtrar antes da cascata mantém os índices (etapaAtualIdx) coerentes
+    // com a lista exibida; o cursor já não avançava em etapas 'na'.
+    var etapas = (etpPorProc[p.id] || []).filter(function(et) {
+      return et.status !== 'na';
+    });
     var cursor = new Date(p.d0.getTime());
     var etapaAtualIdx = -1;
 
@@ -2022,9 +2034,16 @@ function enviarAvisosPrazo(modo) {
       + '</tr></thead><tbody>';
     avisos.forEach(function(a){ tabela += linhaEtapa_(a, tipo, paraRequisitante); });
     tabela += '</tbody></table>';
+    // Convite ao setor requisitante para acompanhar o processo no painel público
+    var painelHtml = paraRequisitante
+      ? '<p style="margin:14px 0 0;padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:13px;">'
+        + '💡 Para acompanhar as etapas e os prazos deste e dos demais processos de contratação, acesse o nosso '
+        + '<a href="' + htmlEsc_(_painelUrl_()) + '" style="color:#1d4ed8;font-weight:700;">Painel de Contratações — Reitoria / SEL</a>.'
+        + '</p>'
+      : '';
     var subt = (tipo === 'vencido' ? '⚠️ Etapas vencidas' : '⏰ Prazos próximos') + (subtituloExtra ? ' · ' + subtituloExtra : '') + ' · Colégio Pedro II';
     return htmlHeader_('Gestão de Etapas - SEL', subt)
-      + intro + tabela + appAssinatura;
+      + intro + tabela + painelHtml + appAssinatura;
   }
 
   // ── Processa um PROCESSO com todas as suas etapas de um tipo ───────────

@@ -3420,12 +3420,12 @@ function periodoEtapaHtml_(et) {
   if (et.status === 'ok' && et.realizacao_iso) {
     if (et.dias > 0 && et.fim_iso) {
       var iniAtraso = addDiasIso_(et.fim_iso, 1);
-      return '<span style="color:var(--red)">Atraso: ' + isoToDisplay(iniAtraso) + ' -> ' + isoToDisplay(et.realizacao_iso) + '</span>';
+      return '<span style="color:var(--red)">Atraso: ' + isoToDisplay(iniAtraso) + ' → ' + isoToDisplay(et.realizacao_iso) + '</span>';
     }
     return '<span style="color:var(--muted)">Realizado em ' + isoToDisplay(et.realizacao_iso) + '</span>';
   }
   if (et.fim_iso) {
-    return isoToDisplay(et.ini_iso || '') + (et.fim_iso ? ' -> ' + isoToDisplay(et.fim_iso) : '');
+    return isoToDisplay(et.ini_iso || '') + (et.fim_iso ? ' → ' + isoToDisplay(et.fim_iso) : '');
   }
   return '';
 }
