@@ -3014,7 +3014,7 @@ function renderFila_() {
       + '<div style="display:flex;align-items:center;gap:6px;">'
       + '<span style="font-size:10px;font-weight:700;background:'+tipoBg+';color:'+tipoColor+';padding:2px 7px;border-radius:8px;white-space:nowrap;">'+tipoFila+'</span>'
       + '<span class="fila-card-nome" style="flex:1">' + esc(p.nome) + '</span>'
-      + (isChefe_ ? '<button style="border:1px solid var(--border);background:#fff;color:var(--muted);border-radius:7px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;" onclick="event.stopPropagation();editarNomeFila_(\''+p.id+'\')">Editar</button>' : '')
+      + (isChefe_ ? '<button style="border:1px solid var(--border);background:#fff;color:var(--muted);border-radius:7px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;" onclick="event.stopPropagation();editarNomeFila_(\''+p.id+'\')">Editar</button>' + '<button style="border:1px solid var(--border);background:#fff;color:var(--muted);border-radius:7px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;" onclick="event.stopPropagation();editarNumeroFila_(\''+p.id+'\')">Nº</button>' + '<button style="border:1px solid var(--border);background:#fff;color:var(--muted);border-radius:7px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;" onclick="event.stopPropagation();editarLinkFila_(\''+p.id+'\')">Link</button>' + '<button style="border:1px solid var(--border);background:#fff;color:var(--muted);border-radius:7px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;" onclick="event.stopPropagation();editarSrpFila_(\''+p.id+'\')">SRP</button>' + '<button style="border:1px solid #f0c2bd;background:#fff;color:#b42318;border-radius:7px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;" onclick="event.stopPropagation();excluirDemandaFila_(\''+p.id+'\')">Excluir</button>' : '')
       + '</div>'
       + '<div class="fila-card-sub">' + (p.num?esc(p.num)+' · ':'') + esc(p.modal||'') + (p.req?' · '+esc(p.req):'') + '</div>'
       + (statusPreservado ? '<div style="font-size:11px;color:#475569;margin-top:4px;line-height:1.35;">Status preservado: '+esc(statusPreservado)+'</div>' : '')
@@ -3157,6 +3157,59 @@ function _atualizarNomeLocal_(pid, nome) {
       if (p && p.id === pid) p.nome = nome;
     });
   });
+}
+
+
+function editarNumeroFila_(pid){
+  if(!isChefeAtual_()) return;
+  var p=(FILA_ORDER||[]).find(function(x){return x && x.id===pid;});
+  if(!p) return;
+  dialogoCampo_({titulo:'Editar número do processo', mensagem:'Informe o número (N° SUAP) do processo.', valor:(p.num||''), placeholder:'Ex.: 23040.000201/2026-83', ok:'Salvar'}, function(novo){
+    novo=String(novo||'').trim();
+    if(novo.length<3){ toast('Informe o número do processo.','err'); return; }
+    google.script.run
+      .withSuccessHandler(function(res){ if(res && res.ok){ try{p.num=novo;}catch(e){} renderFila_(); toast('Número do processo atualizado.','ok'); setTimeout(carregarDados,500);} else { toast('Erro: '+((res&&res.erro)?res.erro:'Não foi possível salvar.'),'err'); } })
+      .withFailureHandler(function(e){ toast('Erro: '+(e.message||e),'err'); })
+      .salvarNumeroProcessoApp({ processoId: pid, numero: novo, authToken: AUTH_TOKEN });
+  });
+}
+function editarLinkFila_(pid){
+  if(!isChefeAtual_()) return;
+  var p=(FILA_ORDER||[]).find(function(x){return x && x.id===pid;});
+  if(!p) return;
+  dialogoCampo_({titulo:'Editar link do processo', mensagem:'Cole a URL completa do processo no SUAP.', valor:(p.suap||''), tipo:'url', placeholder:'https://suap...', ok:'Salvar link'}, function(link){
+    link=String(link||'').trim();
+    if(link.toLowerCase().indexOf('http')!==0){ toast('Informe uma URL completa começando com http.','err'); return; }
+    google.script.run
+      .withSuccessHandler(function(res){ if(res && res.ok){ try{p.suap=link;}catch(e){} renderFila_(); toast('Link do processo atualizado.','ok'); setTimeout(carregarDados,500);} else { toast('Erro: '+((res&&res.erro)?res.erro:'Não foi possível salvar.'),'err'); } })
+      .withFailureHandler(function(e){ toast('Erro: '+(e.message||e),'err'); })
+      .salvarLinkSuapProcessoApp({ processoId: pid, linkSuap: link, authToken: AUTH_TOKEN });
+  });
+}
+function editarSrpFila_(pid){
+  if(!isChefeAtual_()) return;
+  var p=(FILA_ORDER||[]).find(function(x){return x && x.id===pid;});
+  if(!p) return;
+  var atual=!!(p && (p.temIRP===true || p.srp===true || /^(sim|s|true|1)$/i.test(String(p.temIRP||p.srp||''))));
+  var alvo=!atual;
+  var msg=alvo ? 'Marcar este processo como SRP (Registro de Preços)?' : 'Remover a marcação de SRP deste processo?';
+  dialogoConfirmar_('SRP — Registro de Preços', msg, function(){
+    google.script.run
+      .withSuccessHandler(function(res){ if(res && res.ok){ try{p.temIRP=alvo;p.srp=alvo;}catch(e){} renderFila_(); toast(alvo?'Marcado como SRP.':'Marcação de SRP removida.','ok'); setTimeout(carregarDados,500);} else { toast('Erro: '+((res&&res.erro)?res.erro:'Não foi possível salvar.'),'err'); } })
+      .withFailureHandler(function(e){ toast('Erro: '+(e.message||e),'err'); })
+      .salvarSrpProcessoApp({ processoId: pid, srp: alvo, authToken: AUTH_TOKEN });
+  }, alvo?'Marcar SRP':'Remover SRP');
+}
+function excluirDemandaFila_(pid){
+  if(!isChefeAtual_()) return;
+  var p=(FILA_ORDER||[]).find(function(x){return x && x.id===pid;});
+  if(!p) return;
+  dialogoConfirmar_('Excluir demanda', 'Excluir definitivamente o processo "'+(p.nome||pid)+'" e todas as suas etapas? Esta ação não pode ser desfeita.', function(){
+    google.script.run
+      .withSuccessHandler(function(res){ if(res && res.ok){ try{var idx=(FILA_ORDER||[]).findIndex(function(x){return x && x.id===pid;}); if(idx>=0) FILA_ORDER.splice(idx,1);}catch(e){} try{CAP_DATA=null;CAP_CARREGADO=false;}catch(e){} renderFila_(); toast('Processo excluído.','ok'); setTimeout(carregarDados,500);} else { toast('Erro: '+((res&&res.erro)?res.erro:'Não foi possível excluir.'),'err'); } })
+      .withFailureHandler(function(e){ toast('Erro: '+(e.message||e),'err'); })
+      .excluirProcessoApp({ processoId: pid, authToken: AUTH_TOKEN });
+  }, 'Excluir definitivamente');
 }
 
 function editarNomeFila_(pid) {
