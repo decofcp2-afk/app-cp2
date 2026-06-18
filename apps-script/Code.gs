@@ -3031,6 +3031,8 @@ function salvarSrpProcessoApp(params) {
       if (!pid) throw new Error('Processo não informado.');
       var ehSrp = (params.srp === true || _isSim_(params.srp));
       var valor = ehSrp ? 'Sim' : 'Não';
+
+      // 1) Aba Processos: coluna "Tem IRP?"
       var shP = _ss_().getSheetByName(ABA_PROC);
       if (!shP) throw new Error('Aba de processos não encontrada.');
       var lP = _garantirColunas_(shP, 'ProcessoID', ['Tem IRP?']);
@@ -3038,14 +3040,44 @@ function salvarSrpProcessoApp(params) {
       var iId = hP.indexOf('ProcessoID');
       var iSrp = hP.indexOf('Tem IRP?');
       if (iId < 0 || iSrp < 0) throw new Error('Colunas ProcessoID/Tem IRP? não encontradas.');
+      var achouProc = false;
       for (var i = lP.hIdx + 1; i < lP.values.length; i++) {
         if (String(lP.values[i][iId] || '').trim() === pid) {
           shP.getRange(i + 1, iSrp + 1).setValue(valor);
-          _limparCacheCapacidade_();
-          return { ok: true, srp: ehSrp };
+          achouProc = true;
+          break;
         }
       }
-      throw new Error('Processo não encontrado.');
+      if (!achouProc) throw new Error('Processo não encontrado.');
+
+      // 2) Aba Etapas: etapa de IRP -> "Não iniciada" (SRP) ou "Não se aplica" (não SRP)
+      var novoStatusEtapa = ehSrp ? 'Não iniciada' : 'Não se aplica';
+      var etapasAtualizadas = 0;
+      var shE = _ss_().getSheetByName(ABA_ETP);
+      if (shE) {
+        var lE = _lerAba_(shE, 'ProcessoID');
+        var iIdE = lE.header.indexOf('ProcessoID');
+        var iEtapa = lE.header.indexOf('Etapa');
+        var iStatusE = -1;
+        for (var c = 0; c < lE.header.length; c++) {
+          if (/StatusEtapa/i.test(String(lE.header[c]))) { iStatusE = c; break; }
+        }
+        if (iIdE >= 0 && iEtapa >= 0 && iStatusE >= 0) {
+          for (var r = lE.hIdx + 1; r < lE.values.length; r++) {
+            if (String(lE.values[r][iIdE] || '').trim() === pid &&
+                /IRP|Inten[çc][aã]o de Registro/i.test(String(lE.values[r][iEtapa] || ''))) {
+              _setValorPreservandoValidacao_(shE.getRange(r + 1, iStatusE + 1), novoStatusEtapa);
+              etapasAtualizadas++;
+            }
+          }
+          if (etapasAtualizadas > 0) {
+            try { _sincronizarCapacidadeComEtapas_(); } catch (e2) {}
+          }
+        }
+      }
+
+      _limparCacheCapacidade_();
+      return { ok: true, srp: ehSrp, etapasAtualizadas: etapasAtualizadas };
     } catch (e) { return { ok: false, erro: e.message }; }
   });
 }
