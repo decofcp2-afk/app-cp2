@@ -58,7 +58,11 @@
   ];
 
   function getProfile(sb){
-    return db(sb).from("usuario").select("id,nome,matricula,email,papel,unidade_id,cor_avatar").maybeSingle().then(function(r){ return r.data; });
+    return sb.auth.getUser().then(function(rr){
+      var u = rr.data && rr.data.user;
+      if(!u) return null;
+      return db(sb).from("usuario").select("id,nome,matricula,email,papel,unidade_id,cor_avatar").eq("id", u.id).maybeSingle().then(function(r){ return r.data || null; });
+    }).catch(function(){ return null; });
   }
   function matKey(u){ return (u && (u.matricula || u.email)) || ""; }
   function loadServidores(sb){
@@ -81,7 +85,7 @@
         ok: true, token: "sb-session", exp: Date.now() + 8*3600*1000,
         nome: (prof && prof.nome) || (user && user.email) || "Usuario",
         matricula: mat, isChefe: papel === "chefia" || papel === "admin",
-        mustChange: false, servidores: servidores
+        papel: papel, mustChange: false, servidores: servidores
       };
     });
   }
@@ -230,10 +234,13 @@
       case "salvarServidoresApp": {
         var lista = p.servidores || (Array.isArray(args[0]) ? args[0] : []);
         if(!Array.isArray(lista)) lista = [];
-        return D.from("servidor").delete().gte("criado_em","1900-01-01").then(function(){
-          if(!lista.length) return { ok:true, servidores:[] };
-          var rows = lista.map(function(s){ return { nome:s.nome, matricula: s.matricula||s.email||s.nome, email:s.email||null, cor:s.cor||"#64748b", is_chefe: !!(s.isChefe||s.is_chefe), ativo: s.ativo!==false }; });
-          return D.from("servidor").insert(rows).then(function(r){ return r.error?{ok:false,erro:r.error.message}:{ok:true, servidores:lista}; });
+        return getProfile(sb).then(function(prof){
+          var unidadeId = (prof && prof.unidade_id) || UNIDADE_FALLBACK;
+          return D.from("servidor").delete().eq("unidade_id", unidadeId).then(function(){
+            if(!lista.length) return { ok:true, servidores:[] };
+            var rows = lista.map(function(s){ return { nome:s.nome, matricula: s.matricula||s.email||s.nome, email:s.email||null, cor:s.cor||"#64748b", is_chefe: !!(s.isChefe||s.is_chefe), ativo: s.ativo!==false, unidade_id: unidadeId }; });
+            return D.from("servidor").insert(rows).then(function(r){ return r.error?{ok:false,erro:r.error.message}:{ok:true, servidores:lista}; });
+          });
         });
       }
 
