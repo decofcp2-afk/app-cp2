@@ -77,7 +77,7 @@
 
   function montarEtapasApp(sb){
     return db(sb).from("processo")
-      .select("id,num_suap,objeto,modalidade,d0,tem_irp,link_suap,status,setor_requisitante,email_requisitante,ordem_fila,etapa(linha:ordem,prazo:prazo_dias,nome,agente:agente_responsavel,fase,status_etapa,motivo:motivo_atraso,prazo_ini,prazo_fim,data_realizacao,ordem)")
+      .select("id,num_suap,objeto,modalidade,d0,tem_irp,link_suap,status,setor_requisitante,email_requisitante,ordem_fila,etapa(id,prazo:prazo_dias,nome,agente:agente_responsavel,fase,status_etapa,motivo:motivo_atraso,prazo_ini,prazo_fim,data_realizacao,ordem)")
       .order("num_suap")
       .then(function(rp){
         var procs = []; var filaArr = [];
@@ -102,7 +102,7 @@
             var dias = (realIso && (e.prazo||0)>0) ? Math.max(0, daysBetween(fimIso, realIso)) : 0;
             if (etapaAtualIdx<0 && st!=="ok" && st!=="na") etapaAtualIdx = idx;
             return {
-              linha: e.ordem, prazo: e.prazo||0, nome: e.nome, agente: e.agente||"", fase: e.fase||"",
+              linha: e.id, prazo: e.prazo||0, nome: e.nome, agente: e.agente||"", fase: e.fase||"",
               status: st, retornoFila: false, motivo: e.motivo||"", dias: dias,
               ini_iso: iniIso, fim_iso: fimIso, realizacao_iso: realIso, historico: null
             };
@@ -136,7 +136,19 @@
       });
   }
 
+  function okErr(promise, extra){
+    return promise.then(function(r){ if(r && r.error) return { ok:false, erro:r.error.message }; var o={ok:true}; if(extra) for(var k in extra) o[k]=extra[k]; return o; });
+  }
+  function pickProcId(p){ return p.processoId || p.pid || p.id || p.processo_id; }
+  function pickEtapaId(p){ return p.linhaEtapa || p.etapaId || p.linha || p.id; }
+  function val(){ for(var i=0;i<arguments.length;i++){ if(arguments[i]!==undefined && arguments[i]!==null) return arguments[i]; } return undefined; }
+  function statusStore(s){ s=String(s||"").trim().toLowerCase(); if(s==="na"||s==="nao se aplica"||s==="naoaplica") return "naoaplica"; if(s==="concluida"||s==="concluída") return "ok"; return s; }
+
   function dispatchCall(sb, method, args){
+    var p = (args && args[0]) || {};
+    var D = db(sb);
+    try{ window.__APPSEL_CALLS = window.__APPSEL_CALLS || []; window.__APPSEL_CALLS.push({ m:method, keys:Object.keys(p) }); if(window.__APPSEL_CALLS.length>40) window.__APPSEL_CALLS.shift(); }catch(e){}
+
     switch(method){
       case "getEtapasParaApp": return montarEtapasApp(sb);
       case "validarSessaoApp":
@@ -147,7 +159,52 @@
       case "getHistorico": return Promise.resolve({ ok:true, historico: [] });
       case "getAlertasApp": return Promise.resolve({ ok:true, alertas: [] });
       case "getEmails": return Promise.resolve({ ok:true, emails: [] });
-      case "lerSrpProcessoApp": return Promise.resolve({ ok:true });
+      case "lerSrpProcessoApp":
+        return D.from("processo").select("tem_irp").eq("id", pickProcId(p)).maybeSingle().then(function(r){ return { ok:true, temIRP: !!(r.data && r.data.tem_irp), srp: !!(r.data && r.data.tem_irp) }; });
+
+      case "concluirEtapa": {
+        if(!p.dataRealizacao) return Promise.resolve({ ok:false, erro:"Informe a data de conclusao da etapa antes de concluir." });
+        var updC = { status_etapa:"ok", data_realizacao: p.dataRealizacao };
+        if(p.motivo && String(p.motivo).trim()) updC.motivo_atraso = String(p.motivo).trim();
+        var qC = D.from("etapa").update(updC);
+        qC = p.linhaEtapa ? qC.eq("id", pickEtapaId(p)) : qC.eq("processo_id", pickProcId(p)).eq("nome", p.nomeEtapa);
+        return okErr(qC, { transicaoFase:false, servidorExt:"" });
+      }
+      case "regredirEtapa":
+        return okErr(D.from("etapa").update({ status_etapa:"andamento", data_realizacao:null, motivo_atraso:null }).eq("id", pickEtapaId(p)));
+      case "atualizarStatusEtapa":
+        return okErr(D.from("etapa").update({ status_etapa: statusStore(val(p.status,p.novoStatus,p.statusEtapa,p.valor)) }).eq("id", pickEtapaId(p)));
+      case "atribuirResponsaveisApp":
+        return okErr(D.from("etapa").update({ agente_responsavel: val(p.servidor,p.agente,p.responsavel,p.valor) }).eq("id", pickEtapaId(p)));
+
+      case "salvarNumeroProcessoApp":
+        return okErr(D.from("processo").update({ num_suap: val(p.numero,p.num,p.numeroProcesso,p.valor) }).eq("id", pickProcId(p)));
+      case "salvarLinkSuapProcessoApp":
+        return okErr(D.from("processo").update({ link_suap: val(p.link,p.linkSuap,p.url,p.valor) }).eq("id", pickProcId(p)));
+      case "salvarNomeProcessoFilaApp":
+        return okErr(D.from("processo").update({ objeto: val(p.nome,p.objeto,p.valor) }).eq("id", pickProcId(p)));
+      case "salvarOrdemFilaApp": {
+        var lst = p.ordens || p.lista;
+        if(Array.isArray(lst)){
+          return Promise.all(lst.map(function(it,ix){ return D.from("processo").update({ ordem_fila: (it.ordem!=null?it.ordem:ix) }).eq("id", it.id||it.processoId); })).then(function(){ return { ok:true }; });
+        }
+        var ord = val(p.ordem, p.ordemFila, p.valor);
+        return okErr(D.from("processo").update({ ordem_fila: (ord!=null?ord:null) }).eq("id", pickProcId(p)));
+      }
+      case "salvarSrpProcessoApp": {
+        var srp = !!val(p.srp, p.temSrp, p.tem_irp, p.temIRP, p.valor);
+        return D.from("processo").update({ tem_irp: srp }).eq("id", pickProcId(p)).then(function(r){
+          if(r.error) return { ok:false, erro:r.error.message };
+          return D.from("etapa").update({ status_etapa: srp ? "planejamento" : "naoaplica" }).eq("processo_id", pickProcId(p)).ilike("nome","%IRP%").then(function(){ return { ok:true, temIRP: srp }; });
+        });
+      }
+      case "devolverProcessoFilaApp":
+        return okErr(D.from("processo").update({ d0:null }).eq("id", pickProcId(p)));
+      case "excluirProcessoApp":
+        return D.from("etapa").delete().eq("processo_id", pickProcId(p)).then(function(){
+          return D.from("processo").delete().eq("id", pickProcId(p)).then(function(r){ return r.error?{ok:false,erro:r.error.message}:{ok:true}; });
+        });
+
       default:
         return Promise.resolve({ ok:false, erro:"Acao ainda nao disponivel na versao Supabase (em construcao): "+method, __pendente:true });
     }
