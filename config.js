@@ -314,9 +314,12 @@
         return Promise.resolve({ ok:true, challengeId:"sb", nonce:"sb", salt:"sb" });
       }
       if (route === "appsel.loginProof"){
-        if (!cred.email || !cred.senha) return { ok:false, erro:"Informe e-mail e senha." };
-        return sb.auth.signInWithPassword({ email: cred.email, password: cred.senha }).then(function(r){
-          if (r.error || !r.data || !r.data.user) return { ok:false, erro:"E-mail ou senha invalidos." };
+        var emailF = cred.email, senhaF = cred.senha;
+        // fallback robusto: le os campos direto (cobre autofill, que nao dispara 'input')
+        try{ var mf=document.getElementById('login-matricula'), sf=document.getElementById('login-senha'); if(mf&&mf.value) emailF=normEmail(mf.value); if(sf&&sf.value) senhaF=sf.value; }catch(eRead){}
+        if (!emailF || !senhaF) return { ok:false, erro:"Informe e-mail e senha." };
+        return sb.auth.signInWithPassword({ email: emailF, password: senhaF }).then(function(r){
+          if (r.error || !r.data || !r.data.user) return { ok:false, erro:"E-mail ou senha invalidos." + (r.error&&r.error.message?(" ("+r.error.message+")"):"") };
           return sessaoPayload(sb, r.data.user);
         });
       }
