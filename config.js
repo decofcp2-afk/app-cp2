@@ -273,7 +273,7 @@
       case "cadastrarProcesso": {
         var objeto = val(p.objeto, p.nome) || "";
         var modalidade = val(p.modalidade, p.modal) || "PE";
-        var d0 = val(p.d0, p.dataAbertura) || null;
+        var d0 = null; // cadastro sempre entra na FILA; a data de inicio (d0) e definida ao "iniciar"
         var nro = val(p.nroSuap, p.numSuap, p.numero, p.num) || "";
         var srpC = !!val(p.temIRP, p.srp, p.temSrp);
         var setor = val(p.setor, p.setorRequisitante, p.req) || "";
