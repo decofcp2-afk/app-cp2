@@ -2,7 +2,6 @@
    config.js — ADAPTADOR SUPABASE do APP de Gestao (replica fiel)
    Mantem o index.html intocado. Intercepta as chamadas RPC (route=appsel.*)
    e as roteia para o Supabase. Login via Supabase Auth (e-mail @cp2.g12.br).
-   1a fatia: login + leitura (getEtapasParaApp). Gravacoes: stubs (em construcao).
    ============================================================================ */
 (function () {
   var SB_URL = "https://fhgqixzufmgebwfffdai.supabase.co";
@@ -47,7 +46,6 @@
   function stEtapa(s){ s=String(s||"").trim().toLowerCase(); if(s==="naoaplica"||s==="na") return "na"; return s||"planejamento"; }
   function isoD(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
   var UNIDADE_FALLBACK = "aa2f74ab-86f7-453d-b9e2-e1399e9c26ac";
-  // molde de etapas-padrao (Portaria 638) para cadastro de nova demanda
   var TEMPLATE_ETAPAS = [
     { nome:"Designação da equipe", fase:"interna", ordem:0, prazo:50 },
     { nome:"ETP + Mapa de Riscos + Pesquisa de Preços", fase:"interna", ordem:1, prazo:10 },
@@ -229,7 +227,6 @@
           return D.from("processo").delete().eq("id", pickProcId(p)).then(function(r){ return r.error?{ok:false,erro:r.error.message}:{ok:true}; });
         });
 
-      // ---- equipe / servidores ----
       case "salvarServidoresApp": {
         var lista = p.servidores || (Array.isArray(args[0]) ? args[0] : []);
         if(!Array.isArray(lista)) lista = [];
@@ -240,7 +237,6 @@
         });
       }
 
-      // ---- iniciar processos (fila -> etapas) ----
       case "iniciarProcessos": {
         var items = Array.isArray(args[0]) ? args[0] : (Array.isArray(p)?p:[p]);
         var ops = items.map(function(item){
@@ -267,7 +263,6 @@
         return Promise.all(ops).then(function(){ return { ok:true, iniciados: items.length }; }).catch(function(e){ return { ok:false, erro:String(e&&e.message||e) }; });
       }
 
-      // ---- cadastrar nova demanda (processo + etapas-padrao) ----
       case "cadastrarProcesso": {
         var objeto = val(p.objeto, p.nome) || "";
         var modalidade = val(p.modalidade, p.modal) || "PE";
@@ -305,7 +300,7 @@
                 var fim = new Date(cursor.getTime()); fim.setDate(fim.getDate() + (t.prazo||0)); fimIso = isoD(fim);
                 if(!(isIRP && !srpC)) cursor = new Date(fim.getTime());
               }
-              return { processo_id: pid, nome: t.nome, fase: t.fase, ordem: t.ordem, prazo_dias: t.prazo,
+              return { processo_id: pid, unidade_id: unidadeId, nome: t.nome, fase: t.fase, ordem: t.ordem, prazo_dias: t.prazo,
                        agente_responsavel: (isExt ? rExt : rInt), status_etapa: st, prazo_ini: iniIso, prazo_fim: fimIso };
             });
             return D.from("etapa").insert(rows).then(function(re){ return re.error?{ ok:false, erro:re.error.message }:{ ok:true, processoId: pid }; });
@@ -326,7 +321,6 @@
       }
       if (route === "appsel.loginProof"){
         var emailF = cred.email, senhaF = cred.senha;
-        // fallback robusto: le os campos direto (cobre autofill, que nao dispara 'input')
         try{ var mf=document.getElementById('login-matricula'), sf=document.getElementById('login-senha'); if(mf&&mf.value) emailF=normEmail(mf.value); if(sf&&sf.value) senhaF=sf.value; }catch(eRead){}
         if (!emailF || !senhaF) return { ok:false, erro:"Informe e-mail e senha." };
         return sb.auth.signInWithPassword({ email: emailF, password: senhaF }).then(function(r){
