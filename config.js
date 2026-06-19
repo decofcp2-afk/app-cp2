@@ -392,4 +392,122 @@
   Node.prototype.appendChild = function(n){ if(jsonpHook(n)) return n; return _append.call(this,n); };
   var _insert = Node.prototype.insertBefore;
   Node.prototype.insertBefore = function(n,r){ if(jsonpHook(n)) return n; return _insert.call(this,n,r); };
+
+  // ====================== ADMINISTRAÇÃO (UI injetada) ======================
+  function admEl(tag, css, txt){ var e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; }
+  function admToast(msg, ok){
+    var t=admEl('div','position:fixed;left:50%;bottom:74px;transform:translateX(-50%);z-index:10001;background:'+(ok?'#15803d':'#b91c1c')+';color:#fff;padding:10px 16px;border-radius:8px;font:600 14px system-ui;box-shadow:0 4px 12px rgba(0,0,0,.3);max-width:90%;text-align:center;', msg);
+    document.body.appendChild(t); setTimeout(function(){ try{t.remove();}catch(e){} }, 4000);
+  }
+  function admFechar(){ var m=document.getElementById('ovl-admin-cp2'); if(m) m.remove(); }
+
+  function admCriarUsuario(sb, dados){
+    var sb2 = window.supabase.createClient(SB_URL, SB_KEY, { auth:{ persistSession:false, autoRefreshToken:false, storageKey:'sb-cp2-tmp' } });
+    return sb2.auth.signUp({ email: normEmail(dados.email), password: dados.senha }).then(function(r){
+      if(r.error) return { ok:false, erro:r.error.message };
+      var uid = r.data && r.data.user && r.data.user.id;
+      if(!uid) return { ok:false, erro:'Login nao criado (verifique se "Enable sign ups" esta ativo e "Confirm email" desativado no Supabase Auth).' };
+      return db(sb).from('usuario').insert({ id:uid, nome:dados.nome, email:normEmail(dados.email), papel:dados.papel||'servidor', unidade_id:dados.unidade_id, ativo:true }).then(function(ins){
+        if(ins.error) return { ok:false, erro:'Login criado, mas falhou o perfil: '+ins.error.message };
+        return { ok:true };
+      });
+    });
+  }
+
+  function admAbrir(){
+    admFechar();
+    sbReady.then(function(sb){
+      var D = db(sb);
+      Promise.all([ getProfile(sb), D.from('unidade').select('id,sigla,nome').eq('ativa',true).order('nome'), D.from('usuario').select('id,nome,email,papel,unidade_id,ativo').order('nome') ])
+      .then(function(res){
+        var prof=res[0], unidades=(res[1].data||[]), usuarios=(res[2].data||[]);
+        var isAdmin = prof && prof.papel==='admin';
+        var ovl = admEl('div','position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:10000;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:28px 12px;');
+        ovl.id='ovl-admin-cp2';
+        ovl.addEventListener('click', function(ev){ if(ev.target===ovl) admFechar(); });
+        var card = admEl('div','background:#fff;max-width:780px;width:100%;border-radius:12px;padding:20px 22px;font:14px system-ui;color:#0f172a;box-shadow:0 10px 40px rgba(0,0,0,.3);');
+        var hd = admEl('div','display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;');
+        hd.appendChild(admEl('div','font:700 18px system-ui;', isAdmin?'Administração':'Equipe da unidade'));
+        var x = admEl('button','border:0;background:#e2e8f0;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:16px;','✕'); x.onclick=admFechar; hd.appendChild(x);
+        card.appendChild(hd);
+
+        if(isAdmin){
+          card.appendChild(admEl('div','font:700 15px system-ui;margin:6px 0 8px;','Unidades'));
+          var addRow = admEl('div','display:flex;gap:6px;margin-bottom:8px;');
+          var inSig=admEl('input','flex:0 0 90px;padding:7px;border:1px solid #cbd5e1;border-radius:7px;'); inSig.placeholder='Sigla';
+          var inNom=admEl('input','flex:1;padding:7px;border:1px solid #cbd5e1;border-radius:7px;'); inNom.placeholder='Nome da nova unidade';
+          var bAdd=admEl('button','background:#1e3a8a;color:#fff;border:0;border-radius:7px;padding:7px 12px;cursor:pointer;','Adicionar');
+          bAdd.onclick=function(){ var s=(inSig.value||'').trim().toUpperCase(), n=(inNom.value||'').trim(); if(!s||!n){ admToast('Informe sigla e nome.',false); return; }
+            D.from('unidade').insert({ sigla:s, nome:n, tipo:'campus', ativa:true, municipio_calendario:'Rio de Janeiro' }).then(function(r){ if(r.error){ admToast(r.error.message,false);} else { admToast('Unidade criada.',true); admAbrir(); } });
+          };
+          addRow.appendChild(inSig); addRow.appendChild(inNom); addRow.appendChild(bAdd); card.appendChild(addRow);
+          var ulBox=admEl('div','max-height:150px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px;');
+          unidades.forEach(function(u){ var row=admEl('div','display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid #f1f5f9;');
+            row.appendChild(admEl('div','flex:0 0 70px;font-weight:600;', u.sigla));
+            var nIn=admEl('input','flex:1;padding:5px;border:1px solid #e2e8f0;border-radius:6px;'); nIn.value=u.nome;
+            var sv=admEl('button','background:#e2e8f0;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;','Salvar');
+            sv.onclick=function(){ D.from('unidade').update({ nome:(nIn.value||'').trim() }).eq('id',u.id).then(function(r){ admToast(r.error?r.error.message:'Unidade atualizada.', !r.error); }); };
+            row.appendChild(nIn); row.appendChild(sv); ulBox.appendChild(row);
+          });
+          card.appendChild(ulBox);
+        }
+
+        card.appendChild(admEl('div','font:700 15px system-ui;margin:6px 0 8px;', 'Novo usuário'+(isAdmin?'':' (sua unidade)')));
+        var nu = admEl('div','display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;');
+        var uNome=admEl('input','padding:7px;border:1px solid #cbd5e1;border-radius:7px;'); uNome.placeholder='Nome';
+        var uMail=admEl('input','padding:7px;border:1px solid #cbd5e1;border-radius:7px;'); uMail.placeholder='E-mail (@cp2.g12.br)';
+        var uSenha=admEl('input','padding:7px;border:1px solid #cbd5e1;border-radius:7px;'); uSenha.placeholder='Senha provisória'; uSenha.type='text';
+        var uPapel=admEl('select','padding:7px;border:1px solid #cbd5e1;border-radius:7px;');
+        ['servidor','chefia'].forEach(function(p){ var o=admEl('option',null,p==='servidor'?'Servidor':'Chefe'); o.value=p; uPapel.appendChild(o); });
+        nu.appendChild(uNome); nu.appendChild(uMail); nu.appendChild(uSenha); nu.appendChild(uPapel); card.appendChild(nu);
+        var uUni=null;
+        if(isAdmin){ uUni=admEl('select','padding:7px;border:1px solid #cbd5e1;border-radius:7px;width:100%;margin-bottom:6px;');
+          unidades.forEach(function(u){ var o=admEl('option',null,u.nome); o.value=u.id; uUni.appendChild(o); }); card.appendChild(uUni);
+        }
+        var bNovo=admEl('button','background:#15803d;color:#fff;border:0;border-radius:7px;padding:9px 14px;cursor:pointer;font-weight:600;width:100%;margin-bottom:18px;','Criar usuário');
+        bNovo.onclick=function(){ var nome=(uNome.value||'').trim(), email=(uMail.value||'').trim(), senha=uSenha.value||'';
+          if(!nome||!email||!senha){ admToast('Preencha nome, e-mail e senha.',false); return; }
+          if(senha.length<6){ admToast('A senha precisa de ao menos 6 caracteres.',false); return; }
+          var unidade_id = isAdmin ? (uUni&&uUni.value) : (prof&&prof.unidade_id);
+          if(!unidade_id){ admToast('Unidade não definida.',false); return; }
+          bNovo.disabled=true; bNovo.textContent='Criando...';
+          admCriarUsuario(sb, { nome:nome, email:email, senha:senha, papel:uPapel.value, unidade_id:unidade_id }).then(function(r){
+            bNovo.disabled=false; bNovo.textContent='Criar usuário';
+            if(r.ok){ admToast('Usuário criado.',true); admAbrir(); } else { admToast(r.erro||'Falha.',false); }
+          });
+        };
+
+        card.appendChild(admEl('div','font:700 15px system-ui;margin:6px 0 8px;', 'Usuários'));
+        var box=admEl('div','max-height:240px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;');
+        if(!usuarios.length) box.appendChild(admEl('div','padding:10px;color:#64748b;','Nenhum usuário ainda.'));
+        usuarios.forEach(function(u){
+          var row=admEl('div','display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid #f1f5f9;');
+          row.appendChild(admEl('div','flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', (u.nome||u.email)+'  ·  '+(u.email||'')));
+          var pSel=admEl('select','padding:4px;border:1px solid #e2e8f0;border-radius:6px;');
+          ['servidor','chefia'].concat(isAdmin?['admin']:[]).forEach(function(p){ var o=admEl('option',null,p); o.value=p; if(u.papel===p)o.selected=true; pSel.appendChild(o); });
+          row.appendChild(pSel);
+          var uSel=null;
+          if(isAdmin){ uSel=admEl('select','padding:4px;border:1px solid #e2e8f0;border-radius:6px;max-width:120px;'); unidades.forEach(function(z){ var o=admEl('option',null,z.sigla); o.value=z.id; if(u.unidade_id===z.id)o.selected=true; uSel.appendChild(o); }); row.appendChild(uSel); }
+          var sv=admEl('button','background:#e2e8f0;border:0;border-radius:6px;padding:4px 10px;cursor:pointer;','Salvar');
+          sv.onclick=function(){ var upd={ papel:pSel.value }; if(isAdmin&&uSel) upd.unidade_id=uSel.value; D.from('usuario').update(upd).eq('id',u.id).then(function(r){ admToast(r.error?r.error.message:'Atualizado.', !r.error); }); };
+          row.appendChild(sv); box.appendChild(row);
+        });
+        card.appendChild(box);
+
+        ovl.appendChild(card); document.body.appendChild(ovl);
+      }).catch(function(e){ admToast('Erro: '+(e&&e.message||e), false); });
+    });
+  }
+
+  function admInstalarBotao(){
+    if(document.getElementById('btn-admin-cp2')) return;
+    sbReady.then(function(sb){ return getProfile(sb); }).then(function(p){
+      if(!p || (p.papel!=='admin' && p.papel!=='chefia')) return;
+      if(document.getElementById('btn-admin-cp2')) return;
+      var b=admEl('button','position:fixed;right:18px;bottom:18px;z-index:9998;background:#1e3a8a;color:#fff;border:0;border-radius:24px;padding:10px 16px;font:600 14px system-ui;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.25);', p.papel==='admin'?'⚙️ Administração':'👥 Equipe');
+      b.id='btn-admin-cp2'; b.onclick=admAbrir; document.body.appendChild(b);
+    }).catch(function(){});
+  }
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(admInstalarBotao, 2500); });
+  setTimeout(admInstalarBotao, 3500); setInterval(admInstalarBotao, 6000);
 })();
