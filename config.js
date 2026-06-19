@@ -171,7 +171,18 @@
       case "getCapacidadeApp": return Promise.resolve({ ok:true, capacidade: [] });
       case "getHistorico": return Promise.resolve({ ok:true, historico: [] });
       case "getAlertasApp": return Promise.resolve({ ok:true, alertas: [] });
-      case "getEmails": return Promise.resolve({ ok:true, emails: [] });
+      case "getEmails":
+        return D.from("servidor").select("nome,matricula,email").then(function(r){ return { ok:true, emails:(r.data||[]).map(function(s){ return { servidor:s.nome, nome:s.nome, matricula:s.matricula, email:s.email||"" }; }) }; });
+      case "salvarEmail": {
+        var alvoE = val(p.servidor, p.nome, p.matricula, p.id) || "";
+        var emE = val(p.email, p.emailServidor, p.valor); if(emE===undefined) emE=null;
+        return Promise.all([
+          D.from("servidor").update({ email: emE }).eq("nome", alvoE),
+          D.from("servidor").update({ email: emE }).eq("matricula", alvoE)
+        ]).then(function(){ return { ok:true }; });
+      }
+      case "salvarEmailProcesso":
+        return okErr(D.from("processo").update({ email_requisitante: val(p.email,p.emailReq,p.valor) }).eq("id", pickProcId(p)));
       case "lerSrpProcessoApp":
         return D.from("processo").select("tem_irp").eq("id", pickProcId(p)).maybeSingle().then(function(r){ return { ok:true, temIRP: !!(r.data && r.data.tem_irp), srp: !!(r.data && r.data.tem_irp) }; });
 
