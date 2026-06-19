@@ -45,6 +45,19 @@
   function toIso(s){ var d=parseISO(s); if(!d) return null; return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
   function daysBetween(a,b){ var x=parseISO(a),y=parseISO(b); if(!x||!y) return 0; return Math.round((y-x)/86400000); }
   function stEtapa(s){ s=String(s||"").trim().toLowerCase(); if(s==="naoaplica"||s==="na") return "na"; return s||"planejamento"; }
+  function isoD(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+  var UNIDADE_FALLBACK = "aa2f74ab-86f7-453d-b9e2-e1399e9c26ac";
+  // molde de etapas-padrao (Portaria 638) para cadastro de nova demanda
+  var TEMPLATE_ETAPAS = [
+    { nome:"Designação da equipe", fase:"interna", ordem:0, prazo:50 },
+    { nome:"ETP + Mapa de Riscos + Pesquisa de Preços", fase:"interna", ordem:1, prazo:10 },
+    { nome:"Minuta do Termo de Referência", fase:"interna", ordem:2, prazo:11 },
+    { nome:"IRP — Intenção de Registro de Preços", fase:"interna", ordem:3, prazo:15 },
+    { nome:"Adequações finais dos documentos e envio à Procuradoria", fase:"interna", ordem:4, prazo:20 },
+    { nome:"Versão final do TR e demais documentos aprovados", fase:"interna", ordem:5, prazo:10 },
+    { nome:"Envio ao SEL/SEPMA (Recebimento de processo, cadastro e publicação da licitação)", fase:"interna", ordem:6, prazo:30 },
+    { nome:"Fase externa — Pregão Eletrônico", fase:"externa", ordem:7, prazo:60 }
+  ];
 
   function getProfile(sb){
     return db(sb).from("usuario").select("id,nome,matricula,email,papel,unidade_id,cor_avatar").maybeSingle().then(function(r){ return r.data; });
@@ -241,6 +254,52 @@
           });
         });
         return Promise.all(ops).then(function(){ return { ok:true, iniciados: items.length }; }).catch(function(e){ return { ok:false, erro:String(e&&e.message||e) }; });
+      }
+
+      // ---- cadastrar nova demanda (processo + etapas-padrao) ----
+      case "cadastrarProcesso": {
+        var objeto = val(p.objeto, p.nome) || "";
+        var modalidade = val(p.modalidade, p.modal) || "PE";
+        var d0 = val(p.d0, p.dataAbertura) || null;
+        var nro = val(p.nroSuap, p.numSuap, p.numero, p.num) || "";
+        var srpC = !!val(p.temIRP, p.srp, p.temSrp);
+        var setor = val(p.setor, p.setorRequisitante, p.req) || "";
+        var emailReq = val(p.emailReq, p.emailRequisitante) || "";
+        var linkS = val(p.linkSuap, p.link) || "";
+        var rInt = val(p.respInterno, p.servidor, p.servidorInterno) || "";
+        var rExt = val(p.respExterno, p.servidorExterno) || rInt;
+        var mLow = String(modalidade).toLowerCase();
+        var segC = (mLow.indexOf("preg")>=0 || mLow.indexOf("concorr")>=0);
+        if(segC && rInt && rExt && rInt===rExt) return Promise.resolve({ ok:false, erro:"Fase interna e externa precisam de responsaveis diferentes em Pregao/Concorrencia." });
+        return getProfile(sb).then(function(prof){
+          var unidadeId = (prof && prof.unidade_id) || UNIDADE_FALLBACK;
+          return D.from("processo").insert({
+            unidade_id: unidadeId, num_suap: nro, objeto: objeto, modalidade: modalidade,
+            d0: d0, tem_irp: srpC, setor_requisitante: setor, email_requisitante: emailReq,
+            link_suap: linkS, status: d0 ? "andamento" : "planejamento", publicado: true
+          }).select("id").maybeSingle().then(function(rins){
+            if(rins.error || !rins.data) return { ok:false, erro:(rins.error&&rins.error.message)||"Falha ao criar processo." };
+            var pid = rins.data.id;
+            var cursor = d0 ? parseISO(d0) : null;
+            var firstDone = false;
+            var rows = TEMPLATE_ETAPAS.map(function(t){
+              var isExt = t.fase === "externa";
+              var isIRP = /irp/i.test(t.nome);
+              var st = "planejamento";
+              if(isIRP && !srpC) st = "naoaplica";
+              else if(d0 && !firstDone){ st = "andamento"; firstDone = true; }
+              var iniIso=null, fimIso=null;
+              if(cursor){
+                iniIso = isoD(cursor);
+                var fim = new Date(cursor.getTime()); fim.setDate(fim.getDate() + (t.prazo||0)); fimIso = isoD(fim);
+                if(!(isIRP && !srpC)) cursor = new Date(fim.getTime());
+              }
+              return { processo_id: pid, nome: t.nome, fase: t.fase, ordem: t.ordem, prazo_dias: t.prazo,
+                       agente_responsavel: (isExt ? rExt : rInt), status_etapa: st, prazo_ini: iniIso, prazo_fim: fimIso };
+            });
+            return D.from("etapa").insert(rows).then(function(re){ return re.error?{ ok:false, erro:re.error.message }:{ ok:true, processoId: pid }; });
+          });
+        });
       }
 
       default:
