@@ -51,10 +51,10 @@
   }
   function matKey(u){ return (u && (u.matricula || u.email)) || ""; }
   function loadServidores(sb){
-    return db(sb).from("usuario").select("nome,matricula,email,papel,cor_avatar,ativo").then(function(r){
+    return db(sb).from("servidor").select("nome,matricula,email,cor,is_chefe,ativo").then(function(r){
       var rows = (r.data || []).filter(function(u){ return u.ativo !== false; });
       return rows.map(function(u){
-        return { nome: u.nome || u.email, matricula: matKey(u), cor: u.cor_avatar || "#64748b", isChefe: u.papel === "chefia" || u.papel === "admin" };
+        return { nome: u.nome || u.email, matricula: u.matricula || u.email || u.nome, cor: u.cor || "#64748b", isChefe: !!u.is_chefe };
       });
     }).catch(function(){ return []; });
   }
@@ -204,6 +204,44 @@
         return D.from("etapa").delete().eq("processo_id", pickProcId(p)).then(function(){
           return D.from("processo").delete().eq("id", pickProcId(p)).then(function(r){ return r.error?{ok:false,erro:r.error.message}:{ok:true}; });
         });
+
+      // ---- equipe / servidores ----
+      case "salvarServidoresApp": {
+        var lista = p.servidores || (Array.isArray(args[0]) ? args[0] : []);
+        if(!Array.isArray(lista)) lista = [];
+        return D.from("servidor").delete().gte("criado_em","1900-01-01").then(function(){
+          if(!lista.length) return { ok:true, servidores:[] };
+          var rows = lista.map(function(s){ return { nome:s.nome, matricula: s.matricula||s.email||s.nome, email:s.email||null, cor:s.cor||"#64748b", is_chefe: !!(s.isChefe||s.is_chefe), ativo: s.ativo!==false }; });
+          return D.from("servidor").insert(rows).then(function(r){ return r.error?{ok:false,erro:r.error.message}:{ok:true, servidores:lista}; });
+        });
+      }
+
+      // ---- iniciar processos (fila -> etapas) ----
+      case "iniciarProcessos": {
+        var items = Array.isArray(args[0]) ? args[0] : (Array.isArray(p)?p:[p]);
+        var ops = items.map(function(item){
+          var modal = String(item.modal||"").toLowerCase();
+          var seg = (modal.indexOf("preg")>=0 || modal.indexOf("concorr")>=0);
+          if(seg && item.servidor && item.servidorExt && item.servidor===item.servidorExt){
+            return Promise.reject(new Error("Fase interna e fase externa precisam ter responsaveis diferentes em Pregao/Concorrencia."));
+          }
+          return D.from("processo").update({ d0: item.d0, status:"andamento" }).eq("id", item.pid).then(function(){
+            return D.from("etapa").select("id,nome,fase,status_etapa,ordem").eq("processo_id", item.pid).order("ordem").then(function(re){
+              var ets = re.data || [];
+              var ups = ets.map(function(e){
+                var isExt = String(e.fase||"").toLowerCase().indexOf("ext")>=0;
+                var agente = isExt ? (seg ? (item.servidorExt||"") : (item.servidorExt||item.servidor||"")) : (item.servidor||"");
+                return D.from("etapa").update({ agente_responsavel: agente }).eq("id", e.id);
+              });
+              var primeira = null;
+              for(var k=0;k<ets.length;k++){ var st=stEtapa(ets[k].status_etapa); var nm=String(ets[k].nome||"").toLowerCase(); var contr = nm.indexOf("assinatura")>=0||nm.indexOf("arp")>=0; if(st!=="ok"&&st!=="na"&&!contr){ primeira=ets[k]; break; } }
+              if(primeira) ups.push(D.from("etapa").update({ status_etapa:"andamento", motivo_atraso:null, data_realizacao:null }).eq("id", primeira.id));
+              return Promise.all(ups);
+            });
+          });
+        });
+        return Promise.all(ops).then(function(){ return { ok:true, iniciados: items.length }; }).catch(function(e){ return { ok:false, erro:String(e&&e.message||e) }; });
+      }
 
       default:
         return Promise.resolve({ ok:false, erro:"Acao ainda nao disponivel na versao Supabase (em construcao): "+method, __pendente:true });
