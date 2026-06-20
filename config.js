@@ -519,4 +519,60 @@
   }
   document.addEventListener('DOMContentLoaded', function(){ setTimeout(admInstalarBotao, 2500); });
   setTimeout(admInstalarBotao, 3500); setInterval(admInstalarBotao, 6000);
+
+  // ====================== ESQUECI / REDEFINIR SENHA ======================
+  function fpEl(tag, css, txt){ var e=document.createElement(tag); if(css) e.style.cssText=css; if(txt!=null) e.textContent=txt; return e; }
+  function fpToast(msg, ok){
+    var t=fpEl('div','position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:10003;background:'+(ok?'#15803d':'#b91c1c')+';color:#fff;padding:11px 16px;border-radius:8px;font:600 14px system-ui;box-shadow:0 4px 12px rgba(0,0,0,.3);max-width:92%;text-align:center;', msg);
+    document.body.appendChild(t); setTimeout(function(){ try{t.remove();}catch(e){} }, 6000);
+  }
+  // link "Esqueci minha senha" na tela de login
+  function instalarEsqueciSenha(){
+    try{
+      var campo = document.getElementById('login-senha') || document.getElementById('login-matricula');
+      if(!campo || document.getElementById('fp-link')) return;
+      var a = fpEl('a','display:block;margin-top:10px;font:500 13px system-ui;color:#1e3a8a;cursor:pointer;text-decoration:underline;text-align:center;', 'Esqueci minha senha');
+      a.id='fp-link'; a.href='#';
+      a.onclick=function(ev){ ev.preventDefault();
+        var mf=document.getElementById('login-matricula');
+        var email = normEmail((mf&&mf.value)||'');
+        if(!email){ fpToast('Digite seu e-mail no campo acima e clique novamente.', false); return; }
+        sbReady.then(function(sb){
+          sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname }).then(function(r){
+            if(r.error) fpToast('Erro: '+r.error.message, false);
+            else fpToast('Se o e-mail existir, enviamos um link para redefinir a senha. Verifique sua caixa de entrada (e o spam).', true);
+          });
+        });
+      };
+      var form = (campo.closest && campo.closest('form')) || campo.parentElement;
+      (form||campo).appendChild(a);
+    }catch(e){}
+  }
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(instalarEsqueciSenha, 600); });
+  setTimeout(instalarEsqueciSenha, 1200); setTimeout(instalarEsqueciSenha, 2500);
+
+  // tela de definir nova senha (apos clicar no link do e-mail: evento PASSWORD_RECOVERY)
+  function mostrarNovaSenha(sb){
+    if(document.getElementById('fp-overlay')) return;
+    var ov=fpEl('div','position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:10002;display:flex;align-items:center;justify-content:center;padding:16px;');
+    ov.id='fp-overlay';
+    var card=fpEl('div','background:#fff;max-width:380px;width:100%;border-radius:12px;padding:22px;font:14px system-ui;color:#0f172a;box-shadow:0 10px 40px rgba(0,0,0,.3);');
+    card.appendChild(fpEl('div','font:700 17px system-ui;margin-bottom:6px;','Definir nova senha'));
+    card.appendChild(fpEl('div','color:#64748b;margin-bottom:12px;','Digite a sua nova senha (mínimo 6 caracteres).'));
+    var inp=fpEl('input','width:100%;padding:9px;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:10px;box-sizing:border-box;'); inp.type='text'; inp.placeholder='Nova senha';
+    var b=fpEl('button','width:100%;background:#15803d;color:#fff;border:0;border-radius:8px;padding:10px;font-weight:600;cursor:pointer;','Salvar nova senha');
+    b.onclick=function(){ var ns=inp.value||''; if(ns.length<6){ fpToast('A senha precisa de ao menos 6 caracteres.', false); return; }
+      b.disabled=true; b.textContent='Salvando...';
+      sb.auth.updateUser({ password: ns }).then(function(r){
+        b.disabled=false; b.textContent='Salvar nova senha';
+        if(r.error){ fpToast('Erro: '+r.error.message, false); }
+        else { try{ov.remove();}catch(e){} fpToast('Senha alterada com sucesso! Faça login com a nova senha.', true); sb.auth.signOut(); try{ history.replaceState(null,'',location.pathname); }catch(e){} }
+      });
+    };
+    card.appendChild(inp); card.appendChild(b); ov.appendChild(card); document.body.appendChild(ov);
+  }
+  sbReady.then(function(sb){
+    try{ sb.auth.onAuthStateChange(function(event){ if(event==='PASSWORD_RECOVERY'){ mostrarNovaSenha(sb); } }); }catch(e){}
+    try{ if(/type=recovery/.test(location.hash||'')){ setTimeout(function(){ mostrarNovaSenha(sb); }, 900); } }catch(e){}
+  });
 })();
