@@ -529,9 +529,14 @@
   // link "Esqueci minha senha" na tela de login
   function instalarEsqueciSenha(){
     try{
+      // oculta o link "Esqueci minha senha" original (nao-funcional) do frontend
+      Array.from(document.querySelectorAll('a,button,span,div,p,small')).forEach(function(e){
+        if(e.id==='fp-link') return;
+        if(e.children.length===0 && /esqueci.*senha/i.test(e.textContent||'')){ e.style.display='none'; }
+      });
       var campo = document.getElementById('login-senha') || document.getElementById('login-matricula');
       if(!campo || document.getElementById('fp-link')) return;
-      var a = fpEl('a','display:block;margin-top:10px;font:500 13px system-ui;color:#1e3a8a;cursor:pointer;text-decoration:underline;text-align:center;', 'Esqueci minha senha');
+      var a = fpEl('a','display:block;margin-top:12px;font:600 13px system-ui;color:#ffffff;cursor:pointer;text-decoration:underline;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.4);', 'Esqueci minha senha');
       a.id='fp-link'; a.href='#';
       a.onclick=function(ev){ ev.preventDefault();
         var mf=document.getElementById('login-matricula');
