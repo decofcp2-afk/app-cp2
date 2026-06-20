@@ -67,11 +67,17 @@
   }
   function matKey(u){ return (u && (u.matricula || u.email)) || ""; }
   function loadServidores(sb){
-    // equipe da unidade = usuarios (RLS escopa para a unidade do logado; admin ve todos)
-    return db(sb).from("usuario").select("nome,matricula,email,papel,cor_avatar,ativo").then(function(r){
-      var rows = (r.data || []).filter(function(u){ return u.ativo !== false; });
-      return rows.map(function(u){
-        return { nome: u.nome || u.email, matricula: u.matricula || u.email || u.nome, cor: u.cor_avatar || "#64748b", isChefe: (u.papel==="chefia"||u.papel==="admin") };
+    // equipe = usuarios da PRÓPRIA unidade do logado. Filtramos explicitamente por
+    // unidade_id (não confiamos só no RLS) porque o admin enxerga TODAS as unidades;
+    // sem este filtro, a lista de atribuição/capacidade misturaria servidores de
+    // outras unidades (ex.: João/Maria do Centro aparecendo na COMP).
+    return getProfile(sb).then(function(prof){
+      var unidadeId = (prof && prof.unidade_id) || UNIDADE_FALLBACK;
+      return db(sb).from("usuario").select("nome,matricula,email,papel,cor_avatar,ativo").eq("unidade_id", unidadeId).then(function(r){
+        var rows = (r.data || []).filter(function(u){ return u.ativo !== false; });
+        return rows.map(function(u){
+          return { nome: u.nome || u.email, matricula: u.matricula || u.email || u.nome, cor: u.cor_avatar || "#64748b", isChefe: (u.papel==="chefia"||u.papel==="admin") };
+        });
       });
     }).catch(function(){ return []; });
   }
