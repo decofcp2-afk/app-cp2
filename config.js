@@ -77,14 +77,15 @@
     return Promise.all([getProfile(sb), loadServidores(sb)]).then(function(res){
       var prof = res[0], servidores = res[1];
       var papel = prof ? prof.papel : "servidor";
+      var operacional = !!prof; // todos com perfil (servidor/chefe/admin) operam a Fila/Etapas da sua unidade
       var mat = (prof && matKey(prof)) || (user && user.email) || "";
       if (mat && !servidores.some(function(s){ return s.matricula === mat; })){
-        servidores.push({ nome: (prof&&prof.nome)||(user&&user.email)||"Usuario", matricula: mat, cor: (prof&&prof.cor_avatar)||"#64748b", isChefe: papel==="chefia"||papel==="admin" });
+        servidores.push({ nome: (prof&&prof.nome)||(user&&user.email)||"Usuario", matricula: mat, cor: (prof&&prof.cor_avatar)||"#64748b", isChefe: operacional });
       }
       return {
         ok: true, token: "sb-session", exp: Date.now() + 8*3600*1000,
         nome: (prof && prof.nome) || (user && user.email) || "Usuario",
-        matricula: mat, isChefe: papel === "chefia" || papel === "admin",
+        matricula: mat, isChefe: operacional,
         papel: papel, mustChange: false, servidores: servidores
       };
     });
@@ -501,10 +502,11 @@
   }
 
   function admInstalarBotao(){
-    if(document.getElementById('btn-admin-cp2')) return;
     sbReady.then(function(sb){ return getProfile(sb); }).then(function(p){
-      if(!p || (p.papel!=='admin' && p.papel!=='chefia')) return;
-      if(document.getElementById('btn-admin-cp2')) return;
+      var priv = p && (p.papel==='admin' || p.papel==='chefia');
+      var existing = document.getElementById('btn-admin-cp2');
+      if(!priv){ if(existing) existing.remove(); var ov=document.getElementById('ovl-admin-cp2'); if(ov) ov.remove(); return; }
+      if(existing){ existing.textContent = p.papel==='admin'?'⚙️ Administração':'👥 Equipe'; return; }
       var b=admEl('button','position:fixed;right:18px;bottom:18px;z-index:9998;background:#1e3a8a;color:#fff;border:0;border-radius:24px;padding:10px 16px;font:600 14px system-ui;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.25);', p.papel==='admin'?'⚙️ Administração':'👥 Equipe');
       b.id='btn-admin-cp2'; b.onclick=admAbrir; document.body.appendChild(b);
     }).catch(function(){});
