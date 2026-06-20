@@ -80,7 +80,10 @@
       var papel = prof ? prof.papel : "servidor";
       var operacional = !!prof; // todos com perfil (servidor/chefe/admin) operam a Fila/Etapas da sua unidade
       var mat = (prof && matKey(prof)) || (user && user.email) || "";
-      if (mat && !servidores.some(function(s){ return s.matricula === mat; })){
+      var minha = null;
+      for (var iSrv=0; iSrv<servidores.length; iSrv++){ if (servidores[iSrv].matricula === mat){ minha = servidores[iSrv]; break; } }
+      if (minha){ minha.isChefe = operacional; } // a própria entrada vê Fila/+ (operacional), independentemente do papel
+      else if (mat){
         servidores.push({ nome: (prof&&prof.nome)||(user&&user.email)||"Usuario", matricula: mat, cor: (prof&&prof.cor_avatar)||"#64748b", isChefe: operacional });
       }
       return {
