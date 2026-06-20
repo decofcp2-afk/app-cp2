@@ -476,6 +476,7 @@
             if(r.ok){ admToast('Usuário criado.',true); admAbrir(); } else { admToast(r.erro||'Falha.',false); }
           });
         };
+        card.appendChild(bNovo);
 
         card.appendChild(admEl('div','font:700 15px system-ui;margin:6px 0 8px;', 'Usuários'));
         var box=admEl('div','max-height:240px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;');
