@@ -103,8 +103,14 @@
   }
 
   function montarEtapasApp(sb){
-    return db(sb).from("processo")
+    // Escopa SEMPRE à unidade do usuário logado (inclusive admin). Sem este
+    // filtro, o RLS deixaria o admin (ex.: DECOF/COMP) ver processos de outras
+    // unidades. Cada unidade vê apenas a sua.
+    return getProfile(sb).then(function(prof){
+      var unidadeId = (prof && prof.unidade_id) || UNIDADE_FALLBACK;
+      return db(sb).from("processo")
       .select("id,num_suap,objeto,modalidade,d0,tem_irp,link_suap,status,setor_requisitante,email_requisitante,ordem_fila,etapa(id,prazo:prazo_dias,nome,agente:agente_responsavel,fase,status_etapa,motivo:motivo_atraso,prazo_ini,prazo_fim,data_realizacao,ordem)")
+      .eq("unidade_id", unidadeId)
       .order("num_suap")
       .then(function(rp){
         var procs = []; var filaArr = [];
@@ -163,6 +169,7 @@
         procs.sort(function(a,b){ return (ORD[a.status]!=null?ORD[a.status]:6)-(ORD[b.status]!=null?ORD[b.status]:6); });
         return { processos: procs, filaPrevisao: filaArr, ordemFilaDisponivel: false, calendario: { feriados:{}, municipio:"", modo:"corridos" } };
       });
+    });
   }
 
   function okErr(promise, extra){
@@ -309,7 +316,10 @@
       case "getHistorico": return Promise.resolve({ ok:true, historico: [] });
       case "getAlertasApp": return Promise.resolve({ ok:true, alertas: [] });
       case "getEmails":
-        return D.from("usuario").select("nome,matricula,email").then(function(r){ return { ok:true, emails:(r.data||[]).map(function(s){ return { servidor:s.nome, nome:s.nome, matricula:s.matricula||s.email, email:s.email||"" }; }) }; });
+        return getProfile(sb).then(function(prof){
+          var uId = (prof && prof.unidade_id) || UNIDADE_FALLBACK;
+          return D.from("usuario").select("nome,matricula,email").eq("unidade_id", uId).then(function(r){ return { ok:true, emails:(r.data||[]).map(function(s){ return { servidor:s.nome, nome:s.nome, matricula:s.matricula||s.email, email:s.email||"" }; }) }; });
+        });
       case "salvarEmail": {
         var alvoE = val(p.servidor, p.nome, p.matricula, p.id) || "";
         var emE = val(p.email, p.emailServidor, p.valor); if(emE===undefined) emE=null;
