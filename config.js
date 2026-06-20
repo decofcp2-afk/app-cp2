@@ -2,6 +2,7 @@
    config.js — ADAPTADOR SUPABASE do APP de Gestao (replica fiel)
    Mantem o index.html intocado. Intercepta as chamadas RPC (route=appsel.*)
    e as roteia para o Supabase. Login via Supabase Auth (e-mail @cp2.g12.br).
+   Multi-unidade com RLS + painel de Administracao injetado.
    ============================================================================ */
 (function () {
   var SB_URL = "https://fhgqixzufmgebwfffdai.supabase.co";
@@ -179,13 +180,14 @@
       case "getHistorico": return Promise.resolve({ ok:true, historico: [] });
       case "getAlertasApp": return Promise.resolve({ ok:true, alertas: [] });
       case "getEmails":
-        return D.from("servidor").select("nome,matricula,email").then(function(r){ return { ok:true, emails:(r.data||[]).map(function(s){ return { servidor:s.nome, nome:s.nome, matricula:s.matricula, email:s.email||"" }; }) }; });
+        return D.from("usuario").select("nome,matricula,email").then(function(r){ return { ok:true, emails:(r.data||[]).map(function(s){ return { servidor:s.nome, nome:s.nome, matricula:s.matricula||s.email, email:s.email||"" }; }) }; });
       case "salvarEmail": {
         var alvoE = val(p.servidor, p.nome, p.matricula, p.id) || "";
         var emE = val(p.email, p.emailServidor, p.valor); if(emE===undefined) emE=null;
         return Promise.all([
-          D.from("servidor").update({ email: emE }).eq("nome", alvoE),
-          D.from("servidor").update({ email: emE }).eq("matricula", alvoE)
+          D.from("usuario").update({ email: emE }).eq("nome", alvoE),
+          D.from("usuario").update({ email: emE }).eq("matricula", alvoE),
+          D.from("usuario").update({ email: emE }).eq("email", alvoE)
         ]).then(function(){ return { ok:true }; });
       }
       case "salvarEmailProcesso":
@@ -463,7 +465,7 @@
         var uMail=admEl('input','padding:7px;border:1px solid #cbd5e1;border-radius:7px;'); uMail.placeholder='E-mail (@cp2.g12.br)';
         var uSenha=admEl('input','padding:7px;border:1px solid #cbd5e1;border-radius:7px;'); uSenha.placeholder='Senha provisória'; uSenha.type='text';
         var uPapel=admEl('select','padding:7px;border:1px solid #cbd5e1;border-radius:7px;');
-        ['servidor','chefia'].forEach(function(p){ var o=admEl('option',null,p==='servidor'?'Servidor':'Chefe'); o.value=p; uPapel.appendChild(o); });
+        ['servidor','chefia'].forEach(function(pp){ var o=admEl('option',null,pp==='servidor'?'Servidor':'Chefe'); o.value=pp; uPapel.appendChild(o); });
         nu.appendChild(uNome); nu.appendChild(uMail); nu.appendChild(uSenha); nu.appendChild(uPapel); card.appendChild(nu);
         var uUni=null;
         if(isAdmin){ uUni=admEl('select','padding:7px;border:1px solid #cbd5e1;border-radius:7px;width:100%;margin-bottom:6px;');
@@ -490,7 +492,7 @@
           var row=admEl('div','display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid #f1f5f9;');
           row.appendChild(admEl('div','flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', (u.nome||u.email)+'  ·  '+(u.email||'')));
           var pSel=admEl('select','padding:4px;border:1px solid #e2e8f0;border-radius:6px;');
-          ['servidor','chefia'].concat(isAdmin?['admin']:[]).forEach(function(p){ var o=admEl('option',null,p); o.value=p; if(u.papel===p)o.selected=true; pSel.appendChild(o); });
+          ['servidor','chefia'].concat(isAdmin?['admin']:[]).forEach(function(pp){ var o=admEl('option',null,pp); o.value=pp; if(u.papel===pp)o.selected=true; pSel.appendChild(o); });
           row.appendChild(pSel);
           var uSel=null;
           if(isAdmin){ uSel=admEl('select','padding:4px;border:1px solid #e2e8f0;border-radius:6px;max-width:120px;'); unidades.forEach(function(z){ var o=admEl('option',null,z.sigla); o.value=z.id; if(u.unidade_id===z.id)o.selected=true; uSel.appendChild(o); }); row.appendChild(uSel); }
