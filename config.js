@@ -165,6 +165,118 @@
   function val(){ for(var i=0;i<arguments.length;i++){ if(arguments[i]!==undefined && arguments[i]!==null) return arguments[i]; } return undefined; }
   function statusStore(s){ s=String(s||"").trim().toLowerCase(); if(s==="na"||s==="nao se aplica"||s==="naoaplica") return "naoaplica"; if(s==="concluida"||s==="concluída") return "ok"; return s; }
 
+  // ── Capacidade do Setor (réplica do getCapacidadeApp) ──────────────────
+  function capNormSrv(s){ return String(s||"").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,""); }
+  function capTitle(s){ s=String(s||"").trim(); return s ? s.charAt(0).toUpperCase()+s.slice(1).toLowerCase() : ""; }
+  function capRound1(n){ return Math.round((n||0)*10)/10; }
+  function capNormStatus(s){
+    var n = String(s||"").trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+    if(n.indexOf("conclu")>=0 || n==="ok") return "ok";
+    if(n==="naoaplica" || n==="na" || n.indexOf("nao se aplica")>=0) return "na";
+    if(n.indexOf("andament")>=0) return "andamento";
+    if(n.indexOf("aguard")>=0) return "aguardando";
+    if(n.indexOf("paralis")>=0 || n.indexOf("suspens")>=0) return "paralisado";
+    if(n.indexOf("atras")>=0) return "atrasado";
+    return "pendente"; // planejamento/pendente/vazio
+  }
+  function capRecalc(resumo, registros){
+    var soma={}, fut={}, futQ={};
+    registros.forEach(function(r){
+      if(r.concluido) return;
+      var k = capNormSrv(r.servidor);
+      if(r.ativo==="Sim"){ soma[k]=(soma[k]||0)+r.total; }
+      else { fut[k]=(fut[k]||0)+r.total; futQ[k]=(futQ[k]||0)+1; }
+    });
+    resumo.forEach(function(s){
+      var k = capNormSrv(s.servidor);
+      var pr = soma[k]||0, fu = fut[k]||0;
+      s.processos = capRound1(pr);
+      s.total = capRound1(s.processos + s.outros);
+      s.pct = s.teto ? capRound1(s.total/s.teto*100) : 0;
+      s.status = s.pct>=90 ? "Crítico" : (s.pct>=60 ? "Atenção" : "Disponível");
+      s.futuros = capRound1(fu);
+      s.futurosQtd = futQ[k]||0;
+      s.projetado = capRound1(s.total + s.futuros);
+      s.pctProjetado = s.teto ? capRound1(s.projetado/s.teto*100) : 0;
+    });
+  }
+  function capacidadeApp(sb){
+    return getProfile(sb).then(function(prof){
+      var unidadeId = (prof && prof.unidade_id) || UNIDADE_FALLBACK;
+      return Promise.all([
+        db(sb).from("capacidade_carga").select("id,processo_id,servidor,fase,pts_mod,pts_nat,pts_sess,processo(objeto,modalidade,num_suap,email_requisitante)").eq("unidade_id", unidadeId),
+        db(sb).from("capacidade_outros").select("servidor,fase,outros").eq("unidade_id", unidadeId),
+        db(sb).from("etapa").select("processo_id,fase,status_etapa").eq("unidade_id", unidadeId),
+        db(sb).from("usuario").select("nome,papel,ativo").eq("unidade_id", unidadeId)
+      ]).then(function(res){
+        var cargas = (res[0].data)||[], outros = (res[1].data)||[], etapas = (res[2].data)||[], usuarios = (res[3].data)||[];
+        // status por processo
+        var acc = {};
+        etapas.forEach(function(e){
+          var pid = e.processo_id; if(!pid) return;
+          var st = capNormStatus(e.status_etapa); if(st==="na") return;
+          var fk = String(e.fase||"").toLowerCase().indexOf("ext")>=0 ? "ext" : "int";
+          if(!acc[pid]) acc[pid] = { total:0, ok:0, ativa:"", primeiraPend:"", primeiraPendPosOk:"", iniciado:false };
+          var a = acc[pid]; a.total++;
+          if(st==="ok"){ a.ok++; a.iniciado=true; }
+          else if(["andamento","aguardando","paralisado","atrasado"].indexOf(st)>=0){ if(!a.ativa) a.ativa=fk; a.iniciado=true; }
+          else if(st==="pendente"){ if(!a.primeiraPend) a.primeiraPend=fk; if(a.ok>0 && !a.primeiraPendPosOk) a.primeiraPendPosOk=fk; }
+        });
+        var concluido={}, faseCorrente={}, iniciado={};
+        Object.keys(acc).forEach(function(pid){
+          var a = acc[pid];
+          concluido[pid] = a.total>0 && a.ok>=a.total;
+          faseCorrente[pid] = a.ativa || a.primeiraPendPosOk || a.primeiraPend || "";
+          iniciado[pid] = a.iniciado;
+        });
+        // outros por servidor+fase
+        var outrosMap = {};
+        outros.forEach(function(o){ outrosMap[capNormSrv(o.servidor)+"|"+(String(o.fase||"int").toLowerCase().indexOf("ext")>=0?"ext":"int")] = Number(o.outros)||0; });
+        // registros
+        var registrosInt=[], registrosExt=[];
+        cargas.forEach(function(c){
+          var pid = c.processo_id;
+          if(concluido[pid]) return;
+          var fk = String(c.fase||"").toLowerCase().indexOf("ext")>=0 ? "ext" : "int";
+          if(faseCorrente[pid]==="ext" && fk==="int") return; // esconde interna depois que externa assumiu
+          var ativo;
+          if(concluido[pid]) ativo="Não";
+          else if(fk==="ext") ativo = faseCorrente[pid]==="ext" ? "Sim" : "Não";
+          else ativo = (faseCorrente[pid]==="int" && iniciado[pid]) ? "Sim" : "Não";
+          var pr = c.processo||{};
+          var p11=Number(c.pts_mod)||0, p12=Number(c.pts_nat)||0, p23=Number(c.pts_sess)||0;
+          var rec = {
+            linha: c.id, pid: pr.num_suap || c.processo_id, servidor: capTitle(c.servidor||""),
+            objeto: pr.objeto||"", modal: pr.modalidade||"", fase: c.fase, ativo: ativo,
+            pts11: p11, pts12: p12, pts23: p23, total: capRound1(p11+p12+p23),
+            emailR: pr.email_requisitante||"", concluido: false
+          };
+          if(fk==="ext") registrosExt.push(rec); else registrosInt.push(rec);
+        });
+        // resumo por servidor da unidade
+        function buildResumo(faseKey){
+          return usuarios.filter(function(u){ return u.ativo!==false; }).map(function(u){
+            return {
+              servidor: u.nome, outros: outrosMap[capNormSrv(u.nome)+"|"+faseKey]||0,
+              linhaSum: "", colOutros: faseKey==="int"?2:11, total:0, teto: faseKey==="int"?10:6,
+              pct:0, status:"Disponível", futuros:0, futurosQtd:0, projetado:0, pctProjetado:0
+            };
+          });
+        }
+        var resumoInt = buildResumo("int"), resumoExt = buildResumo("ext");
+        capRecalc(resumoInt, registrosInt);
+        capRecalc(resumoExt, registrosExt);
+        return { ok:true, resumoInt: resumoInt, resumoExt: resumoExt, registrosInt: registrosInt, registrosExt: registrosExt };
+      });
+    }).catch(function(e){ return { ok:false, erro: String(e && e.message || e), resumoInt:[], resumoExt:[], registrosInt:[], registrosExt:[] }; });
+  }
+  function capRequireChefe(sb){
+    return getProfile(sb).then(function(prof){
+      if(!prof || (prof.papel!=="chefia" && prof.papel!=="admin")) return { __block: { ok:false, erro:"Ação restrita à chefia." }, prof:null };
+      return { __block:null, prof:prof };
+    });
+  }
+
   function dispatchCall(sb, method, args){
     var p = (args && args[0]) || {};
     var D = db(sb);
@@ -176,7 +288,16 @@
         return sb.auth.getUser().then(function(r){ return r.data && r.data.user ? sessaoPayload(sb, r.data.user) : { ok:false, erro:"Sessao expirada." }; });
       case "logoutApp": return sb.auth.signOut().then(function(){ return { ok:true }; });
       case "getServidoresApp": return loadServidores(sb).then(function(s){ return { ok:true, servidores: s }; });
-      case "getCapacidadeApp": return Promise.resolve({ ok:true, capacidade: [] });
+      case "getCapacidadeApp": return capacidadeApp(sb);
+      case "salvarPontuacaoCap":
+        return capRequireChefe(sb).then(function(g){ if(g.__block) return g.__block;
+          return okErr(D.from("capacidade_carga").update({ pts_mod: Number(val(p.pts11,p.pts_mod,0))||0, pts_nat: Number(val(p.pts12,p.pts_nat,0))||0, pts_sess: Number(val(p.pts23,p.pts_sess,0))||0 }).eq("id", val(p.linha,p.cargaId,p.id))); });
+      case "salvarOutrosCap":
+        return capRequireChefe(sb).then(function(g){ if(g.__block) return g.__block;
+          var serv = val(p.servidor); if(!serv) return { ok:false, erro:"Servidor não informado." };
+          var faseK = String(val(p.fase,"int")).toLowerCase().indexOf("ext")>=0 ? "ext" : "int";
+          var valor = Number(val(p.valor,p.outros,0))||0;
+          return okErr(D.from("capacidade_outros").upsert({ unidade_id: g.prof.unidade_id, servidor: serv, fase: faseK, outros: valor }, { onConflict:"unidade_id,servidor,fase" })); });
       case "getHistorico": return Promise.resolve({ ok:true, historico: [] });
       case "getAlertasApp": return Promise.resolve({ ok:true, alertas: [] });
       case "getEmails":
@@ -207,8 +328,23 @@
         return okErr(D.from("etapa").update({ status_etapa:"andamento", data_realizacao:null, motivo_atraso:null }).eq("id", pickEtapaId(p)));
       case "atualizarStatusEtapa":
         return okErr(D.from("etapa").update({ status_etapa: statusStore(val(p.status,p.novoStatus,p.statusEtapa,p.valor)) }).eq("id", pickEtapaId(p)));
-      case "atribuirResponsaveisApp":
+      case "atribuirResponsaveisApp": {
+        if(p.servInt!==undefined || p.servExt!==undefined){
+          return capRequireChefe(sb).then(function(g){ if(g.__block) return g.__block;
+            var pid2 = pickProcId(p); var si = val(p.servInt)||""; var se = val(p.servExt)||"";
+            var mN = String(p.modal||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,""); var ehPE = mN.indexOf("preg")>=0||mN.indexOf("concorr")>=0;
+            if(ehPE && si && se && si===se) return { ok:false, erro:"Fase interna e externa precisam de responsaveis diferentes em Pregao/Concorrencia." };
+            var ops = [
+              D.from("capacidade_carga").update({ servidor: si }).eq("processo_id", pid2).neq("fase","Externa"),
+              D.from("etapa").update({ agente_responsavel: si }).eq("processo_id", pid2).not("fase","ilike","%ext%")
+            ];
+            ops.push(D.from("capacidade_carga").update({ servidor: ehPE? se : (se||si) }).eq("processo_id", pid2).eq("fase","Externa"));
+            ops.push(D.from("etapa").update({ agente_responsavel: ehPE? se : (se||si) }).eq("processo_id", pid2).ilike("fase","%ext%"));
+            return Promise.all(ops).then(function(){ return { ok:true, avisos: [] }; });
+          });
+        }
         return okErr(D.from("etapa").update({ agente_responsavel: val(p.servidor,p.agente,p.responsavel,p.valor) }).eq("id", pickEtapaId(p)));
+      }
 
       case "salvarNumeroProcessoApp":
         return okErr(D.from("processo").update({ num_suap: val(p.numero,p.num,p.numeroProcesso,p.valor) }).eq("id", pickProcId(p)));
@@ -317,7 +453,12 @@
               return { processo_id: pid, unidade_id: unidadeId, nome: t.nome, fase: t.fase, ordem: t.ordem, prazo_dias: t.prazo,
                        agente_responsavel: (isExt ? rExt : rInt), status_etapa: st, prazo_ini: iniIso, prazo_fim: fimIso };
             });
-            return D.from("etapa").insert(rows).then(function(re){ return re.error?{ ok:false, erro:re.error.message }:{ ok:true, processoId: pid }; });
+            return D.from("etapa").insert(rows).then(function(re){
+              if(re.error) return { ok:false, erro:re.error.message };
+              var cargasRows = [{ unidade_id: unidadeId, processo_id: pid, servidor: rInt||null, fase: segC?"Interna":"Unica", pts_mod:0, pts_nat:0, pts_sess:0 }];
+              if(segC) cargasRows.push({ unidade_id: unidadeId, processo_id: pid, servidor: rExt||null, fase:"Externa", pts_mod:0, pts_nat:0, pts_sess:0 });
+              return D.from("capacidade_carga").insert(cargasRows).then(function(){ return { ok:true, processoId: pid }; });
+            });
           });
         });
       }
