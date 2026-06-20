@@ -105,11 +105,13 @@
         (rp.data || []).forEach(function(p){
           if (!p.d0){
             var etsF = (p.etapa||[]).slice().sort(function(a,b){return (a.ordem||0)-(b.ordem||0);});
+            var fInt=""; for(var fi=0;fi<etsF.length;fi++){ if((etsF[fi].fase||"").toLowerCase().indexOf("ext")<0 && etsF[fi].agente){ fInt=etsF[fi].agente; break; } }
+            var fExt=""; for(var fe=0;fe<etsF.length;fe++){ if((etsF[fe].fase||"").toLowerCase().indexOf("ext")>=0 && etsF[fe].agente){ fExt=etsF[fe].agente; break; } }
             filaArr.push({
               id: p.id, num: p.num_suap||p.id, nome: p.objeto, modal: p.modalidade||"",
               req: p.setor_requisitante||"", suap: p.link_suap||"#",
               etapasPrazos: etsF.map(function(e){ return { nome:e.nome, prazo:e.prazo||0, fase:e.fase||"", status:stEtapa(e.status_etapa) }; }),
-              servidor: "", servidorExt: "", ordemFila: (p.ordem_fila!=null?p.ordem_fila:null)
+              servidor: fInt, servidorExt: fExt, ordemFila: (p.ordem_fila!=null?p.ordem_fila:null)
             });
             return;
           }
