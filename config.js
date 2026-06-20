@@ -66,10 +66,11 @@
   }
   function matKey(u){ return (u && (u.matricula || u.email)) || ""; }
   function loadServidores(sb){
-    return db(sb).from("servidor").select("nome,matricula,email,cor,is_chefe,ativo").then(function(r){
+    // equipe da unidade = usuarios (RLS escopa para a unidade do logado; admin ve todos)
+    return db(sb).from("usuario").select("nome,matricula,email,papel,cor_avatar,ativo").then(function(r){
       var rows = (r.data || []).filter(function(u){ return u.ativo !== false; });
       return rows.map(function(u){
-        return { nome: u.nome || u.email, matricula: u.matricula || u.email || u.nome, cor: u.cor || "#64748b", isChefe: !!u.is_chefe };
+        return { nome: u.nome || u.email, matricula: u.matricula || u.email || u.nome, cor: u.cor_avatar || "#64748b", isChefe: (u.papel==="chefia"||u.papel==="admin") };
       });
     }).catch(function(){ return []; });
   }
